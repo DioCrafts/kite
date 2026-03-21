@@ -79,7 +79,9 @@ func GetUserByIDCached(id uint64) (*User, error) {
 		return nil, err
 	}
 	userCache.Add(id, u)
-	return u, nil
+	// Also return a copy on miss path to keep the cached entry immutable.
+	copy := *u
+	return &copy, nil
 }
 
 // InvalidateUserCache removes a user from the auth cache.
