@@ -17,6 +17,11 @@ const GeneralAIProviderOpenAI = "openai"
 const GeneralAIProviderAnthropic = "anthropic"
 const DefaultGeneralAIProvider = GeneralAIProviderOpenAI
 
+// OnSettingsChanged is an optional callback invoked after UpdateGeneralSetting
+// completes.  main.go wires this to RefreshProcessedHTML so that changes to
+// EnableAnalytics are reflected in the cached index.html without a restart.
+var OnSettingsChanged func()
+
 func DefaultGeneralNodeTerminalImageValue() string {
 	image := strings.TrimSpace(common.NodeTerminalImage)
 	if image == "" {
