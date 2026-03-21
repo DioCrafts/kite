@@ -1,0 +1,15 @@
+.git
+.github
+.gitignore
+node_modules
+ui/node_modules
+ui/dist
+static
+*.md
+docs
+deploy
+charts
+LICENSE
+Makefile
+.vscode
+.idea
