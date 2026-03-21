@@ -42,6 +42,7 @@ func podNodeIndexer(obj client.Object) []string {
 // newFakeClientSet creates a cluster.ClientSet backed by a fake controller-runtime
 // client that supports the spec.nodeName field indexer. Objects are pre-loaded
 // into the fake client so the informer-like index is already populated.
+// CacheEnabled is set to true to exercise the indexed query path.
 func newFakeClientSet(t *testing.T, objs ...client.Object) *cluster.ClientSet {
 	t.Helper()
 	scheme := buildTestScheme(t)
@@ -57,7 +58,30 @@ func newFakeClientSet(t *testing.T, objs ...client.Object) *cluster.ClientSet {
 
 	return &cluster.ClientSet{
 		K8sClient: &kube.K8sClient{
-			Client: fakeClient,
+			Client:       fakeClient,
+			CacheEnabled: true,
+		},
+	}
+}
+
+// newFakeClientSetUncached creates a cluster.ClientSet with CacheEnabled=false
+// to exercise the single cluster-wide list fallback path.
+func newFakeClientSetUncached(t *testing.T, objs ...client.Object) *cluster.ClientSet {
+	t.Helper()
+	scheme := buildTestScheme(t)
+	cb := fake.NewClientBuilder().
+		WithScheme(scheme)
+
+	for _, o := range objs {
+		cb = cb.WithObjects(o)
+	}
+
+	fakeClient := cb.Build()
+
+	return &cluster.ClientSet{
+		K8sClient: &kube.K8sClient{
+			Client:       fakeClient,
+			CacheEnabled: false,
 		},
 	}
 }
@@ -350,4 +374,136 @@ func TestNodeHandlerList_CrossNamespacePods(t *testing.T) {
 	assert.Equal(t, int64(3), m.Pods, "3 pods across 3 namespaces")
 	assert.Equal(t, int64(600), m.CPURequest, "100+200+300 = 600m")
 	assert.Equal(t, int64((64+128+256)*1024*1024), m.MemoryRequest, "64+128+256 = 448Mi")
+}
+
+// ===================================================================
+// Uncached path tests — exercise the single cluster-wide list fallback
+// ===================================================================
+
+// TestNodeHandlerList_Uncached_PodAssignment verifies that the uncached fallback
+// (single cluster-wide pod list + group in Go) produces correct per-node metrics.
+func TestNodeHandlerList_Uncached_PodAssignment(t *testing.T) {
+	nodeA := makeNode("node-a", 4000, 8*1024*1024*1024, 110)
+	nodeB := makeNode("node-b", 8000, 16*1024*1024*1024, 110)
+
+	podA1 := makePod("pod-a1", "default", "node-a", 500, 128*1024*1024)
+	podA2 := makePod("pod-a2", "kube-system", "node-a", 200, 256*1024*1024)
+	podB1 := makePod("pod-b1", "default", "node-b", 1000, 512*1024*1024)
+	unscheduled := makePod("unscheduled-pod", "default", "", 100, 64*1024*1024)
+
+	metricsA := makeNodeMetrics("node-a", 1200, 2*1024*1024*1024)
+	metricsB := makeNodeMetrics("node-b", 3500, 6*1024*1024*1024)
+
+	cs := newFakeClientSetUncached(t,
+		nodeA, nodeB,
+		podA1, podA2, podB1, unscheduled,
+		metricsA, metricsB,
+	)
+
+	ctx, rec := newTestGinContext(t, cs)
+	handler := NewNodeHandler()
+	handler.List(ctx)
+
+	result := decodeNodeListResponse(t, rec)
+
+	require.Len(t, result.Items, 2)
+	assert.Equal(t, "node-a", result.Items[0].Name)
+	assert.Equal(t, "node-b", result.Items[1].Name)
+
+	// node-a: 2 pods, 700m CPU, 384Mi memory
+	mA := result.Items[0].Metrics
+	require.NotNil(t, mA)
+	assert.Equal(t, int64(2), mA.Pods, "node-a should have 2 pods (uncached)")
+	assert.Equal(t, int64(700), mA.CPURequest, "node-a CPU request (uncached)")
+	assert.Equal(t, int64((128+256)*1024*1024), mA.MemoryRequest, "node-a memory request (uncached)")
+	assert.Equal(t, int64(1200), mA.CPUUsage)
+	assert.Equal(t, int64(2*1024*1024*1024), mA.MemoryUsage)
+
+	// node-b: 1 pod, 1000m CPU, 512Mi memory
+	mB := result.Items[1].Metrics
+	require.NotNil(t, mB)
+	assert.Equal(t, int64(1), mB.Pods, "node-b should have 1 pod (uncached)")
+	assert.Equal(t, int64(1000), mB.CPURequest, "node-b CPU request (uncached)")
+	assert.Equal(t, int64(512*1024*1024), mB.MemoryRequest, "node-b memory request (uncached)")
+}
+
+// TestNodeHandlerList_Uncached_EmptyCluster verifies uncached path with no nodes.
+func TestNodeHandlerList_Uncached_EmptyCluster(t *testing.T) {
+	cs := newFakeClientSetUncached(t)
+	ctx, rec := newTestGinContext(t, cs)
+
+	handler := NewNodeHandler()
+	handler.List(ctx)
+
+	result := decodeNodeListResponse(t, rec)
+	assert.Empty(t, result.Items)
+}
+
+// TestNodeHandlerList_Uncached_NodesWithoutPods verifies uncached path with
+// nodes that have no pods scheduled.
+func TestNodeHandlerList_Uncached_NodesWithoutPods(t *testing.T) {
+	node := makeNode("lonely-node", 4000, 8*1024*1024*1024, 110)
+	cs := newFakeClientSetUncached(t, node)
+
+	ctx, rec := newTestGinContext(t, cs)
+	handler := NewNodeHandler()
+	handler.List(ctx)
+
+	result := decodeNodeListResponse(t, rec)
+	require.Len(t, result.Items, 1)
+
+	m := result.Items[0].Metrics
+	require.NotNil(t, m)
+	assert.Equal(t, int64(0), m.Pods, "no pods (uncached)")
+	assert.Equal(t, int64(0), m.CPURequest)
+	assert.Equal(t, int64(0), m.MemoryRequest)
+	assert.Equal(t, int64(4000), m.CPULimit)
+}
+
+// TestNodeHandlerList_Uncached_MultipleContainersPerPod verifies the fallback
+// path sums requests from all containers in a pod.
+func TestNodeHandlerList_Uncached_MultipleContainersPerPod(t *testing.T) {
+	node := makeNode("multi-node", 8000, 16*1024*1024*1024, 110)
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "multi-pod", Namespace: "default"},
+		Spec: corev1.PodSpec{
+			NodeName: "multi-node",
+			Containers: []corev1.Container{
+				{
+					Name: "sidecar", Image: "envoy",
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    *resource.NewMilliQuantity(200, resource.DecimalSI),
+							corev1.ResourceMemory: *resource.NewQuantity(128*1024*1024, resource.BinarySI),
+						},
+					},
+				},
+				{
+					Name: "app", Image: "myapp",
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    *resource.NewMilliQuantity(300, resource.DecimalSI),
+							corev1.ResourceMemory: *resource.NewQuantity(256*1024*1024, resource.BinarySI),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	cs := newFakeClientSetUncached(t, node, pod)
+	ctx, rec := newTestGinContext(t, cs)
+
+	handler := NewNodeHandler()
+	handler.List(ctx)
+
+	result := decodeNodeListResponse(t, rec)
+	require.Len(t, result.Items, 1)
+
+	m := result.Items[0].Metrics
+	require.NotNil(t, m)
+	assert.Equal(t, int64(1), m.Pods)
+	assert.Equal(t, int64(500), m.CPURequest, "200+300=500m (uncached)")
+	assert.Equal(t, int64((128+256)*1024*1024), m.MemoryRequest, "128+256=384Mi (uncached)")
 }
