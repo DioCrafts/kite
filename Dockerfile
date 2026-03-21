@@ -4,7 +4,7 @@ WORKDIR /app/ui
 
 COPY ui/package.json ui/pnpm-lock.yaml ./
 
-RUN corepack enable && \
+RUN npm install -g pnpm && \
     pnpm install --frozen-lockfile
 
 COPY ui/ ./
