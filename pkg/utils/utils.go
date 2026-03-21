@@ -2,7 +2,6 @@ package utils
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -11,14 +10,12 @@ import (
 func InjectAnalytics(htmlContent string) string {
 	analyticsScript := `<script defer src="https://cloud.umami.is/script.js" data-website-id="c3d8a914-abbc-4eed-9699-a9192c4bef9e" data-exclude-search="true" data-exclude-hash="true" data-do-not-track="true"></script>`
 
-	re := regexp.MustCompile(`</head>`)
-	return re.ReplaceAllString(htmlContent, "  "+analyticsScript+"\n  </head>")
+	return strings.Replace(htmlContent, "</head>", "  "+analyticsScript+"\n  </head>", 1)
 }
 
 func InjectKiteBase(htmlContent string, base string) string {
 	baseScript := fmt.Sprintf(`<script>window.__dynamic_base__='%s';</script>`, base)
-	re := regexp.MustCompile(`<head>`)
-	return re.ReplaceAllString(htmlContent, "<head>\n    "+baseScript)
+	return strings.Replace(htmlContent, "<head>", "<head>\n    "+baseScript, 1)
 }
 
 func RandomString(length int) string {

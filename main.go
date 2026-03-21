@@ -52,6 +52,11 @@ func setupStatic(r *gin.Engine) {
 	assetsGroup := r.Group(base + "/assets")
 	assetsGroup.Use(middleware.StaticCache())
 	assetsGroup.StaticFS("/", http.FS(assertsFS))
+
+	// Pre-process index.html once at startup: inject base script and optional
+	// analytics tag so the NoRoute handler only needs to send cached bytes.
+	processedHTML := preprocessIndexHTML(base)
+
 	r.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
 		if len(path) >= len(base)+5 && path[len(base):len(base)+5] == "/api/" {
@@ -59,21 +64,27 @@ func setupStatic(r *gin.Engine) {
 			return
 		}
 
-		content, err := static.ReadFile("static/index.html")
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read index.html"})
-			return
-		}
-
-		htmlContent := string(content)
-		htmlContent = utils.InjectKiteBase(htmlContent, base)
-		if common.EnableAnalytics {
-			htmlContent = utils.InjectAnalytics(htmlContent)
-		}
-
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.String(http.StatusOK, htmlContent)
+		c.Data(http.StatusOK, "text/html; charset=utf-8", processedHTML)
 	})
+}
+
+// preprocessIndexHTML reads the embedded index.html, injects the kite base
+// script and (optionally) the analytics tag, and returns the final bytes.
+// Called once at startup — the result is immutable and shared across requests.
+func preprocessIndexHTML(base string) []byte {
+	content, err := static.ReadFile("static/index.html")
+	if err != nil {
+		klog.Warningf("Failed to read embedded index.html: %v (UI may not be bundled)", err)
+		return []byte("<!doctype html><html><body><p>index.html not found</p></body></html>")
+	}
+
+	htmlContent := string(content)
+	htmlContent = utils.InjectKiteBase(htmlContent, base)
+	if common.EnableAnalytics {
+		htmlContent = utils.InjectAnalytics(htmlContent)
+	}
+
+	return []byte(htmlContent)
 }
 
 func setupAPIRouter(r *gin.RouterGroup, cm *cluster.ClusterManager) {
