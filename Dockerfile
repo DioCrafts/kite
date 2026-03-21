@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o kite .
 
 FROM gcr.io/distroless/static:nonroot
 
-WORKDIR /app
+WORKDIR /home/nonroot
 
 COPY --from=backend-builder /app/kite .
 
