@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -14,6 +16,7 @@ import (
 	"github.com/zxh326/kite/pkg/handlers/resources"
 	"github.com/zxh326/kite/pkg/middleware"
 	"github.com/zxh326/kite/pkg/utils"
+	"golang.org/x/sync/errgroup"
 )
 
 type SearchHandler struct {
@@ -54,19 +57,51 @@ func (h *SearchHandler) createCacheKey(clusterName, query string, limit int) str
 func (h *SearchHandler) Search(c *gin.Context, query string, limit int) ([]common.SearchResult, error) {
 	query = normalizeSearchQuery(query)
 	limit = normalizeSearchLimit(limit)
-	var allResults []common.SearchResult
 
-	// Search in different resource types
+	// Determine which resource types to search
 	searchFuncs := resources.SearchFuncs
 	guessSearchResources, q := utils.GuessSearchResources(query)
+
+	// Collect the search functions to execute
+	type searchEntry struct {
+		name string
+		fn   func(*gin.Context, string, int64) ([]common.SearchResult, error)
+	}
+	var entries []searchEntry
 	for name, searchFunc := range searchFuncs {
 		if guessSearchResources == "all" || name == guessSearchResources {
-			results, err := searchFunc(c, q, int64(limit))
-			if err != nil {
-				continue
-			}
-			allResults = append(allResults, results...)
+			entries = append(entries, searchEntry{name: name, fn: searchFunc})
 		}
+	}
+
+	// Execute searches in parallel using errgroup
+	resultSlices := make([][]common.SearchResult, len(entries))
+	g, _ := errgroup.WithContext(context.Background())
+
+	for i, entry := range entries {
+		g.Go(func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("search: resource %q panicked: %v", entry.name, r)
+					err = nil
+				}
+			}()
+			results, searchErr := entry.fn(c, q, int64(limit))
+			if searchErr != nil {
+				log.Printf("search: resource %q failed: %v", entry.name, searchErr)
+				return nil
+			}
+			resultSlices[i] = results
+			return nil
+		})
+	}
+
+	_ = g.Wait() // all goroutines return nil, error is always nil
+
+	// Merge results from all resource types
+	var allResults []common.SearchResult
+	for _, slice := range resultSlices {
+		allResults = append(allResults, slice...)
 	}
 
 	queryLower := strings.ToLower(q)
@@ -104,11 +139,6 @@ func (h *SearchHandler) GlobalSearch(c *gin.Context) {
 			Results: cachedResults,
 			Total:   len(cachedResults),
 		}
-		copiedCtx := c.Copy()
-		go func() {
-			// Perform search in the background to update cache
-			_, _ = h.Search(copiedCtx, query, limit)
-		}()
 		c.JSON(http.StatusOK, response)
 		return
 	}
