@@ -61,7 +61,7 @@ func (h *NodeTerminalHandler) HandleNodeTerminalWebSocket(c *gin.Context) {
 			h.sendErrorMessage(conn, fmt.Sprintf("Node %s not found", nodeName))
 			return
 		}
-		setting, err := model.GetGeneralSetting()
+		setting, err := model.GetGeneralSettingCached()
 		if err != nil {
 			log.Printf("Failed to load general setting: %v", err)
 			h.sendErrorMessage(conn, fmt.Sprintf("Failed to load settings: %v", err))

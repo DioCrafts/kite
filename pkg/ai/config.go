@@ -38,7 +38,7 @@ func providerLabel(provider string) string {
 }
 
 func LoadRuntimeConfig() (*RuntimeConfig, error) {
-	setting, err := model.GetGeneralSetting()
+	setting, err := model.GetGeneralSettingCached()
 	if err != nil {
 		return nil, err
 	}

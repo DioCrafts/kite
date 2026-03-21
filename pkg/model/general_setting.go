@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/zxh326/kite/pkg/common"
 	"gorm.io/gorm"
@@ -61,6 +62,46 @@ func DefaultGeneralAIModelByProvider(provider string) string {
 	default:
 		return DefaultGeneralAIModel
 	}
+}
+
+// gsMu + gsCache implement a singleton cache for the GeneralSetting row.
+// Read-path uses RLock (~10-25 ns); miss falls through to DB with double-check.
+var (
+	gsMu    sync.RWMutex
+	gsCache *GeneralSetting
+)
+
+// GetGeneralSettingCached returns the cached GeneralSetting singleton.
+// On cache miss it falls back to GetGeneralSetting (DB + normalisation)
+// and stores the result.  Thread-safe via double-checked locking.
+func GetGeneralSettingCached() (*GeneralSetting, error) {
+	gsMu.RLock()
+	if c := gsCache; c != nil {
+		gsMu.RUnlock()
+		return c, nil
+	}
+	gsMu.RUnlock()
+
+	// Cache miss — acquire write lock and double-check.
+	gsMu.Lock()
+	defer gsMu.Unlock()
+	if gsCache != nil {
+		return gsCache, nil
+	}
+	s, err := GetGeneralSetting()
+	if err != nil {
+		return nil, err
+	}
+	gsCache = s
+	return s, nil
+}
+
+// InvalidateGeneralSettingCache clears the cached singleton so the next
+// read reloads from the database.  Called from UpdateGeneralSetting.
+func InvalidateGeneralSettingCache() {
+	gsMu.Lock()
+	gsCache = nil
+	gsMu.Unlock()
 }
 
 func GetGeneralSetting() (*GeneralSetting, error) {
@@ -132,6 +173,7 @@ func UpdateGeneralSetting(updates map[string]interface{}) (*GeneralSetting, erro
 		return nil, err
 	}
 	applyRuntimeGeneralSetting(setting)
+	InvalidateGeneralSettingCache()
 	return setting, nil
 }
 

@@ -50,7 +50,7 @@ func (h *KubectlTerminalHandler) HandleKubectlTerminalWebSocket(c *gin.Context) 
 			return
 		}
 
-		setting, err := model.GetGeneralSetting()
+		setting, err := model.GetGeneralSettingCached()
 		if err != nil {
 			h.sendErrorMessage(conn, fmt.Sprintf("Failed to load settings: %v", err))
 			return

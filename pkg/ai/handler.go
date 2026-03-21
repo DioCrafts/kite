@@ -133,7 +133,7 @@ func HandleExecuteContinue(c *gin.Context) {
 }
 
 func HandleGetGeneralSetting(c *gin.Context) {
-	setting, err := model.GetGeneralSetting()
+	setting, err := model.GetGeneralSettingCached()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to load general setting: %v", err)})
 		return
