@@ -24,9 +24,14 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o kite .
 
 FROM gcr.io/distroless/static:nonroot
 
-WORKDIR /home/nonroot
+WORKDIR /app
 
-COPY --from=backend-builder /app/kite .
+COPY --from=backend-builder --chown=nonroot:nonroot /app/kite .
+
+# Default sqlite path in a dir writable by the nonroot user (UID 65532).
+# /home/nonroot is pre-created with correct ownership in distroless:nonroot.
+# Override DB_DSN at runtime for external databases.
+ENV DB_DSN=/home/nonroot/kite.db
 
 EXPOSE 8080
 
