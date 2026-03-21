@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zxh326/kite/pkg/kube"
@@ -30,9 +31,45 @@ type ClientSet struct {
 }
 
 type ClusterManager struct {
+	mu             sync.RWMutex
 	clusters       map[string]*ClientSet
 	errors         map[string]string
 	defaultContext string
+}
+
+// Snapshot returns a shallow copy of the cluster and error maps plus the
+// default context. Callers may iterate the returned maps without holding
+// a lock because they are independent copies.
+func (cm *ClusterManager) Snapshot() (clusters map[string]*ClientSet, errs map[string]string, defaultCtx string) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	clusters = make(map[string]*ClientSet, len(cm.clusters))
+	for k, v := range cm.clusters {
+		clusters[k] = v
+	}
+	errs = make(map[string]string, len(cm.errors))
+	for k, v := range cm.errors {
+		errs[k] = v
+	}
+	return clusters, errs, cm.defaultContext
+}
+
+// ClusterVersion returns the version string for a cluster, if it is loaded.
+func (cm *ClusterManager) ClusterVersion(name string) (version string, ok bool) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	if cs, exists := cm.clusters[name]; exists {
+		return cs.Version, true
+	}
+	return "", false
+}
+
+// ClusterError returns the error string for a cluster, if one is recorded.
+func (cm *ClusterManager) ClusterError(name string) (errMsg string, ok bool) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	errMsg, ok = cm.errors[name]
+	return
 }
 
 func createClientSetInCluster(name, prometheusURL string) (*ClientSet, error) {
@@ -168,6 +205,13 @@ func (t *k8sProxyTransport) RoundTrip(req *http.Request) (*http.Response, error)
 }
 
 func (cm *ClusterManager) GetClientSet(clusterName string) (*ClientSet, error) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.getClientSetLocked(clusterName)
+}
+
+// getClientSetLocked assumes cm.mu is already held (at least RLock).
+func (cm *ClusterManager) getClientSetLocked(clusterName string) (*ClientSet, error) {
 	if len(cm.clusters) == 0 {
 		return nil, fmt.Errorf("no clusters available")
 	}
@@ -178,7 +222,7 @@ func (cm *ClusterManager) GetClientSet(clusterName string) (*ClientSet, error) {
 				return cs, nil
 			}
 		}
-		return cm.GetClientSet(cm.defaultContext)
+		return cm.getClientSetLocked(cm.defaultContext)
 	}
 	if cluster, ok := cm.clusters[clusterName]; ok {
 		return cluster, nil
@@ -238,42 +282,74 @@ func syncClusters(cm *ClusterManager) error {
 		time.Sleep(5 * time.Second)
 		return err
 	}
-	dbClusterMap := make(map[string]interface{})
+
+	// ── Phase 1: Read current state under RLock (fast) ──────────────
+	cm.mu.RLock()
+	oldClusters := make(map[string]*ClientSet, len(cm.clusters))
+	for k, v := range cm.clusters {
+		oldClusters[k] = v
+	}
+	oldErrors := make(map[string]string, len(cm.errors))
+	for k, v := range cm.errors {
+		oldErrors[k] = v
+	}
+	cm.mu.RUnlock()
+
+	// ── Phase 2: Build new state WITHOUT holding any lock (slow I/O) ─
+	newClusters := make(map[string]*ClientSet, len(clusters))
+	newErrors := make(map[string]string)
+	newDefault := ""
+	var stoppedClients []*ClientSet // defer Stop calls until after unlock
+
+	dbClusterMap := make(map[string]struct{}, len(clusters))
 	for _, cluster := range clusters {
-		dbClusterMap[cluster.Name] = cluster
+		dbClusterMap[cluster.Name] = struct{}{}
 		if cluster.IsDefault {
-			cm.defaultContext = cluster.Name
+			newDefault = cluster.Name
 		}
-		current, currentExist := cm.clusters[cluster.Name]
+		current := oldClusters[cluster.Name]
 		if shouldUpdateCluster(current, cluster) {
-			if currentExist {
-				delete(cm.clusters, cluster.Name)
-				current.K8sClient.Stop(cluster.Name)
+			if current != nil {
+				stoppedClients = append(stoppedClients, current)
 			}
 			if cluster.Enable {
 				clientSet, err := buildClientSet(cluster)
 				if err != nil {
 					klog.Errorf("Failed to build k8s client for cluster %s, in cluster: %t, err: %v", cluster.Name, cluster.InCluster, err)
-					cm.errors[cluster.Name] = err.Error()
+					newErrors[cluster.Name] = err.Error()
 					continue
 				}
-				delete(cm.errors, cluster.Name)
-				cm.clusters[cluster.Name] = clientSet
-			} else {
-				delete(cm.errors, cluster.Name)
+				newClusters[cluster.Name] = clientSet
+			}
+			// If !cluster.Enable we simply omit it from both maps
+		} else {
+			// No update needed — carry forward current state
+			if current != nil {
+				newClusters[cluster.Name] = current
+			}
+			if errMsg, ok := oldErrors[cluster.Name]; ok {
+				newErrors[cluster.Name] = errMsg
 			}
 		}
 	}
-	for name, clientSet := range cm.clusters {
+
+	// Clusters removed from the DB: stop their clients
+	for name, clientSet := range oldClusters {
 		if _, ok := dbClusterMap[name]; !ok {
-			delete(cm.clusters, name)
-			clientSet.K8sClient.Stop(name)
+			stoppedClients = append(stoppedClients, clientSet)
 		}
 	}
-	for name := range cm.errors {
-		if _, ok := dbClusterMap[name]; !ok {
-			delete(cm.errors, name)
-		}
+
+	// ── Phase 3: Swap under Lock (microseconds — only pointer assignments) ─
+	cm.mu.Lock()
+	cm.clusters = newClusters
+	cm.errors = newErrors
+	cm.defaultContext = newDefault
+	cm.mu.Unlock()
+
+	// ── Phase 4: Stop old clients outside any lock ──────────────────
+	for _, cs := range stoppedClients {
+		cs.K8sClient.Stop(cs.Name)
 	}
 
 	return nil

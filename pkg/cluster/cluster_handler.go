@@ -17,19 +17,20 @@ import (
 )
 
 func (cm *ClusterManager) GetClusters(c *gin.Context) {
-	result := make([]common.ClusterInfo, 0, len(cm.clusters))
+	clusters, errs, defaultCtx := cm.Snapshot()
+	result := make([]common.ClusterInfo, 0, len(clusters)+len(errs))
 	user := c.MustGet("user").(model.User)
-	for name, cluster := range cm.clusters {
+	for name, cluster := range clusters {
 		if !rbac.CanAccessCluster(user, name) {
 			continue
 		}
 		result = append(result, common.ClusterInfo{
 			Name:      name,
 			Version:   cluster.Version,
-			IsDefault: name == cm.defaultContext,
+			IsDefault: name == defaultCtx,
 		})
 	}
-	for name, errMsg := range cm.errors {
+	for name, errMsg := range errs {
 		if !rbac.CanAccessCluster(user, name) {
 			continue
 		}
@@ -66,10 +67,10 @@ func (cm *ClusterManager) GetClusterList(c *gin.Context) {
 			"config":        "",
 		}
 
-		if clientSet, exists := cm.clusters[cluster.Name]; exists {
-			clusterInfo["version"] = clientSet.Version
+		if version, ok := cm.ClusterVersion(cluster.Name); ok {
+			clusterInfo["version"] = version
 		}
-		if errMsg, exists := cm.errors[cluster.Name]; exists {
+		if errMsg, ok := cm.ClusterError(cluster.Name); ok {
 			clusterInfo["error"] = errMsg
 		}
 
