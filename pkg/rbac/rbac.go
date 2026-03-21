@@ -66,13 +66,23 @@ func GetUserRoles(user model.User) []common.Role {
 }
 
 // getCompiledUserRoles resolves the user's compiled roles from the current config.
-// Called under rwlock.RLock; returns pre-compiled patterns ready for matchCompiled.
+// When user.Roles is pre-populated (the common path via RequireAuth), we look up
+// each role by name in the pre-compiled cache to avoid re-running regexp.Compile
+// on every request. Only roles not found in the cache are compiled on-the-fly.
 func getCompiledUserRoles(user model.User) []compiledRole {
-	// Fast path: user already has pre-resolved raw roles (e.g. API key users)
+	// Common path: user already has pre-resolved raw roles (populated by RequireAuth).
+	// Look them up in the pre-compiled cache instead of recompiling.
 	if user.Roles != nil {
-		result := make([]compiledRole, len(user.Roles))
-		for i, r := range user.Roles {
-			result[i] = compileRole(r)
+		rwlock.RLock()
+		defer rwlock.RUnlock()
+		result := make([]compiledRole, 0, len(user.Roles))
+		for _, r := range user.Roles {
+			if cr := findCompiledRole(r.Name); cr != nil {
+				result = append(result, *cr)
+			} else {
+				// Role not in cache (e.g. dynamically assigned) — compile on the fly
+				result = append(result, compileRole(r))
+			}
 		}
 		return result
 	}
