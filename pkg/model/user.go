@@ -69,7 +69,10 @@ var userCache = expirable.NewLRU[uint64, *User](256, nil, 30*time.Second)
 // fetches from DB and stores it.  Used on the hot auth path.
 func GetUserByIDCached(id uint64) (*User, error) {
 	if u, ok := userCache.Get(id); ok {
-		return u, nil
+		// Return a shallow copy so callers (RequireAuth, etc.) can safely
+		// mutate fields like Roles without racing on the cached pointer.
+		copy := *u
+		return &copy, nil
 	}
 	u, err := GetUserByID(id)
 	if err != nil {
@@ -80,8 +83,8 @@ func GetUserByIDCached(id uint64) (*User, error) {
 }
 
 // InvalidateUserCache removes a user from the auth cache.
-// Called from every mutation function so that security-sensitive changes
-// (disable, delete, password reset) take effect immediately.
+// Called after every successful mutation so that security-sensitive changes
+// (disable, delete, password reset) take effect on the next auth check.
 func InvalidateUserCache(id uint64) {
 	userCache.Remove(id)
 }
@@ -120,8 +123,9 @@ func FindWithSubOrUpsertUser(user *User) error {
 	user.ID = existingUser.ID
 	user.CreatedAt = existingUser.CreatedAt
 	user.SidebarPreference = existingUser.SidebarPreference
+	err := DB.Save(user).Error
 	InvalidateUserCache(uint64(user.ID))
-	return DB.Save(user).Error
+	return err
 }
 
 func GetUserByUsername(username string) (*User, error) {
@@ -202,20 +206,21 @@ func LoginUser(u *User) error {
 
 // DeleteUserByID removes a user by ID
 func DeleteUserByID(id uint) error {
-	InvalidateUserCache(uint64(id))
 	_ = DB.Where("operator_id = ?", id).Delete(&ResourceHistory{}).Error
-	return DB.Delete(&User{}, id).Error
+	err := DB.Delete(&User{}, id).Error
+	InvalidateUserCache(uint64(id))
+	return err
 }
 
 // UpdateUser saves provided user (expects ID set)
 func UpdateUser(user *User) error {
+	err := DB.Save(user).Error
 	InvalidateUserCache(uint64(user.ID))
-	return DB.Save(user).Error
+	return err
 }
 
 // ResetPasswordByID sets a new password (hashed) for user with given id
 func ResetPasswordByID(id uint, plainPassword string) error {
-	InvalidateUserCache(uint64(id))
 	var u User
 	if err := DB.First(&u, id).Error; err != nil {
 		return err
@@ -225,13 +230,16 @@ func ResetPasswordByID(id uint, plainPassword string) error {
 		return err
 	}
 	u.Password = hash
-	return DB.Save(&u).Error
+	err = DB.Save(&u).Error
+	InvalidateUserCache(uint64(id))
+	return err
 }
 
 // SetUserEnabled sets enabled flag for a user
 func SetUserEnabled(id uint, enabled bool) error {
+	err := DB.Model(&User{}).Where("id = ?", id).Update("enabled", enabled).Error
 	InvalidateUserCache(uint64(id))
-	return DB.Model(&User{}).Where("id = ?", id).Update("enabled", enabled).Error
+	return err
 }
 
 func CheckPassword(hashedPassword, plainPassword string) bool {
