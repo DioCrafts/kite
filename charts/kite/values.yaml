@@ -49,15 +49,13 @@ basePath: ""
 # Be careful with this setting in production
 anonymousUserEnabled: false
 
-# This is the key used for signing JWT tokens
-# Change this in production
+# Secret key for signing JWT tokens. Auto-generated if empty.
 # Ignored if using existingSecret
-jwtSecret: "kite-default-jwt-secret-key-change-in-production"
+jwtSecret: ""
 
-# This is the key used for encrypting sensitive data
-# Change this in production
+# Key for encrypting sensitive data. Auto-generated if empty.
 # Ignored if using existingSecret
-encryptKey: "kite-default-encryption-key-change-in-production"
+encryptKey: ""
 
 # Superuser configuration
 # Used to create an initial superuser account on first startup

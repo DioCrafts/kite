@@ -21,8 +21,8 @@ This document describes all available configuration options for the Kite Helm Ch
 | Parameter              | Description                                                                              | Default                                              |
 | ---------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | `anonymousUserEnabled` | Enable anonymous user access with full admin privileges. Use with caution in production. | `false`                                              |
-| `jwtSecret`            | Secret key used for signing JWT tokens. Change this in production.                       | `"kite-default-jwt-secret-key-change-in-production"` |
-| `encryptKey`           | Secret key used for encrypting sensitive data. Change this in production.                | `"kite-default-encryption-key-change-in-production"` |
+| `jwtSecret`            | Secret key for signing JWT tokens. Auto-generated on first boot if empty.                | `""`                                                 |
+| `encryptKey`           | Secret key for encrypting sensitive data. Auto-generated on first boot if empty.         | `""`                                                 |
 | `host`                 | Hostname for the application                                                             | `""`                                                 |
 
 ## Database Configuration
