@@ -132,14 +132,13 @@ func UpdateGeneralSetting(updates map[string]interface{}) (*GeneralSetting, erro
 		return nil, err
 	}
 	applyRuntimeGeneralSetting(setting)
+
+	// Notify listeners (e.g. refresh cached index.html) only on actual mutations.
+	if OnSettingsChanged != nil {
+		OnSettingsChanged()
+	}
 	return setting, nil
 }
-
-// OnSettingsChanged is an optional callback invoked after runtime settings
-// (analytics, version-check, etc.) are applied.  main.go sets this to
-// RefreshProcessedHTML so that toggling analytics in the admin UI
-// immediately regenerates the cached index.html without a restart.
-var OnSettingsChanged func()
 
 func applyRuntimeGeneralSetting(setting *GeneralSetting) {
 	if setting == nil {
@@ -147,8 +146,4 @@ func applyRuntimeGeneralSetting(setting *GeneralSetting) {
 	}
 	common.EnableAnalytics = setting.EnableAnalytics
 	common.EnableVersionCheck = setting.EnableVersionCheck
-
-	if OnSettingsChanged != nil {
-		OnSettingsChanged()
-	}
 }
