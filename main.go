@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -37,6 +38,19 @@ import (
 //go:embed static
 var static embed.FS
 
+// cachedHTML holds the pre-processed index.html bytes.
+// Written once at startup via RefreshProcessedHTML and again whenever the
+// admin toggles analytics in General Settings, so the NoRoute handler
+// always serves a fresh copy without any per-request work.
+var cachedHTML atomic.Value // stores []byte
+
+// RefreshProcessedHTML rebuilds the processed index.html from the embedded
+// file and the current runtime settings (common.Base, common.EnableAnalytics).
+// It is safe to call from any goroutine.
+func RefreshProcessedHTML() {
+	cachedHTML.Store(preprocessIndexHTML(common.Base))
+}
+
 func setupStatic(r *gin.Engine) {
 	base := common.Base
 	if base != "" && base != "/" {
@@ -53,9 +67,8 @@ func setupStatic(r *gin.Engine) {
 	assetsGroup.Use(middleware.StaticCache())
 	assetsGroup.StaticFS("/", http.FS(assertsFS))
 
-	// Pre-process index.html once at startup: inject base script and optional
-	// analytics tag so the NoRoute handler only needs to send cached bytes.
-	processedHTML := preprocessIndexHTML(base)
+	// Pre-process index.html once at startup.
+	RefreshProcessedHTML()
 
 	r.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
@@ -64,7 +77,7 @@ func setupStatic(r *gin.Engine) {
 			return
 		}
 
-		c.Data(http.StatusOK, "text/html; charset=utf-8", processedHTML)
+		c.Data(http.StatusOK, "text/html; charset=utf-8", cachedHTML.Load().([]byte))
 	})
 }
 
@@ -269,6 +282,10 @@ func main() {
 	// Setup router
 	setupAPIRouter(base, cm)
 	setupStatic(r)
+
+	// Wire the settings-changed callback so that toggling analytics in the
+	// admin UI immediately regenerates the cached index.html.
+	model.OnSettingsChanged = RefreshProcessedHTML
 
 	srv := &http.Server{
 		Addr:    ":" + common.Port,
