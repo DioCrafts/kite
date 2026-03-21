@@ -11,9 +11,10 @@ import (
 )
 
 var (
-	RBACConfig *common.RolesConfig
-	once       sync.Once
-	rwlock     sync.RWMutex
+	RBACConfig    *common.RolesConfig
+	compiledRoles []compiledRole // pre-compiled regex patterns, rebuilt on every sync
+	once          sync.Once
+	rwlock        sync.RWMutex
 )
 
 func InitRBAC() {
@@ -60,8 +61,16 @@ func loadRolesFromDB() error {
 			cfg.RoleMapping = append(cfg.RoleMapping, rm)
 		}
 	}
+	// Pre-compile all regex patterns once (Solutions A+D).
+	// This runs every ~60s on sync, never on the hot request path.
+	compiled := make([]compiledRole, len(cfg.Roles))
+	for i, r := range cfg.Roles {
+		compiled[i] = compileRole(r)
+	}
+
 	rwlock.Lock()
 	RBACConfig = cfg
+	compiledRoles = compiled
 	rwlock.Unlock()
 	return nil
 }

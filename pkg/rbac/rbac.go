@@ -2,25 +2,25 @@ package rbac
 
 import (
 	"fmt"
-	"regexp"
 	"slices"
-	"strings"
 
 	"github.com/zxh326/kite/pkg/common"
 	"github.com/zxh326/kite/pkg/model"
 	"k8s.io/klog/v2"
 )
 
-// CanAccess checks if user/oidcGroup can access resource with verb in cluster/namespace
+// CanAccess checks if user/oidcGroup can access resource with verb in cluster/namespace.
+// Uses pre-compiled regex patterns — zero regexp.Compile calls on the hot path.
 func CanAccess(user model.User, resource, verb, cluster, namespace string) bool {
-	roles := GetUserRoles(user)
-	for _, role := range roles {
-		if match(role.Clusters, cluster) &&
-			match(role.Namespaces, namespace) &&
-			match(role.Resources, resource) &&
-			match(role.Verbs, verb) {
+	roles := getCompiledUserRoles(user)
+	for i := range roles {
+		r := &roles[i]
+		if matchCompiled(r.clusters, cluster) &&
+			matchCompiled(r.namespaces, namespace) &&
+			matchCompiled(r.resources, resource) &&
+			matchCompiled(r.verbs, verb) {
 			klog.V(1).Infof("RBAC Check - User: %s, OIDC Groups: %v, Resource: %s, Verb: %s, Cluster: %s, Namespace: %s, Hit Role: %v",
-				user.Key(), user.OIDCGroups, resource, verb, cluster, namespace, role.Name)
+				user.Key(), user.OIDCGroups, resource, verb, cluster, namespace, r.Name)
 			return true
 		}
 	}
@@ -30,9 +30,9 @@ func CanAccess(user model.User, resource, verb, cluster, namespace string) bool 
 }
 
 func CanAccessCluster(user model.User, name string) bool {
-	roles := GetUserRoles(user)
-	for _, role := range roles {
-		if match(role.Clusters, name) {
+	roles := getCompiledUserRoles(user)
+	for i := range roles {
+		if matchCompiled(roles[i].clusters, name) {
 			return true
 		}
 	}
@@ -40,76 +40,76 @@ func CanAccessCluster(user model.User, name string) bool {
 }
 
 func CanAccessNamespace(user model.User, cluster, name string) bool {
-	roles := GetUserRoles(user)
-	for _, role := range roles {
-		if match(role.Clusters, cluster) && match(role.Namespaces, name) {
+	roles := getCompiledUserRoles(user)
+	for i := range roles {
+		r := &roles[i]
+		if matchCompiled(r.clusters, cluster) && matchCompiled(r.namespaces, name) {
 			return true
 		}
 	}
 	return false
 }
 
-// GetUserRoles returns all roles for a user/oidcGroups
+// GetUserRoles returns all roles for a user/oidcGroups.
+// Kept public for external consumers that need the raw common.Role slice
+// (e.g. API responses, AI agent). Hot-path callers use getCompiledUserRoles.
 func GetUserRoles(user model.User) []common.Role {
 	if user.Roles != nil {
 		return user.Roles
 	}
-	rolesMap := make(map[string]common.Role)
+	roles := getCompiledUserRoles(user)
+	out := make([]common.Role, len(roles))
+	for i := range roles {
+		out[i] = roles[i].Role
+	}
+	return out
+}
+
+// getCompiledUserRoles resolves the user's compiled roles from the current config.
+// Called under rwlock.RLock; returns pre-compiled patterns ready for matchCompiled.
+func getCompiledUserRoles(user model.User) []compiledRole {
+	// Fast path: user already has pre-resolved raw roles (e.g. API key users)
+	if user.Roles != nil {
+		result := make([]compiledRole, len(user.Roles))
+		for i, r := range user.Roles {
+			result[i] = compileRole(r)
+		}
+		return result
+	}
+
+	rolesMap := make(map[string]*compiledRole)
 	rwlock.RLock()
 	defer rwlock.RUnlock()
 	for _, mapping := range RBACConfig.RoleMapping {
 		if contains(mapping.Users, "*") || contains(mapping.Users, user.Key()) {
-			if r := findRole(mapping.Name); r != nil {
-				rolesMap[r.Name] = *r
+			if r := findCompiledRole(mapping.Name); r != nil {
+				rolesMap[r.Name] = r
 			}
 		}
 		for _, group := range user.OIDCGroups {
 			if contains(mapping.OIDCGroups, group) {
-				if r := findRole(mapping.Name); r != nil {
-					rolesMap[r.Name] = *r
+				if r := findCompiledRole(mapping.Name); r != nil {
+					rolesMap[r.Name] = r
 				}
 			}
 		}
 	}
-	roles := make([]common.Role, 0, len(rolesMap))
+	roles := make([]compiledRole, 0, len(rolesMap))
 	for _, role := range rolesMap {
-		roles = append(roles, role)
+		roles = append(roles, *role)
 	}
 	return roles
 }
 
-func findRole(name string) *common.Role {
-	rwlock.RLock()
-	defer rwlock.RUnlock()
-	for _, r := range RBACConfig.Roles {
-		if r.Name == name {
-			return &r
+// findCompiledRole looks up a pre-compiled role by name.
+// Must be called under rwlock.RLock.
+func findCompiledRole(name string) *compiledRole {
+	for i := range compiledRoles {
+		if compiledRoles[i].Name == name {
+			return &compiledRoles[i]
 		}
 	}
 	return nil
-}
-
-func match(list []string, val string) bool {
-	for _, v := range list {
-		if len(v) > 1 && strings.HasPrefix(v, "!") {
-			if v[1:] == val {
-				return false
-			}
-		}
-		if v == "*" || v == val {
-			return true
-		}
-
-		re, err := regexp.Compile(v)
-		if err != nil {
-			klog.Error(err)
-			continue
-		}
-		if re.MatchString(val) {
-			return true
-		}
-	}
-	return false
 }
 
 func contains(list []string, val string) bool {

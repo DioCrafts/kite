@@ -263,10 +263,7 @@ func TestCanAccess(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			RBACConfig = &common.RolesConfig{
-				Roles:       tc.roles,
-				RoleMapping: tc.mappings,
-			}
+			setTestRBACConfig(tc.roles, tc.mappings)
 			result := CanAccess(model.User{Username: tc.user, OIDCGroups: tc.oidcGroups}, tc.resource, tc.verb, tc.cluster, tc.namespace)
 
 			if result != tc.expected {
@@ -274,4 +271,17 @@ func TestCanAccess(t *testing.T) {
 			}
 		})
 	}
+}
+
+// setTestRBACConfig configures RBACConfig and compiledRoles for testing.
+func setTestRBACConfig(roles []common.Role, mappings []common.RoleMapping) {
+	RBACConfig = &common.RolesConfig{
+		Roles:       roles,
+		RoleMapping: mappings,
+	}
+	compiled := make([]compiledRole, len(roles))
+	for i, r := range roles {
+		compiled[i] = compileRole(r)
+	}
+	compiledRoles = compiled
 }
