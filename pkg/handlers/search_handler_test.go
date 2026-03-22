@@ -223,17 +223,22 @@ func TestSearchParallelExecution(t *testing.T) {
 	}
 }
 
-// TestSearchPartialFailure ensures that one failing resource type doesn't break others.
+// TestSearchPartialFailure ensures that one failing resource type doesn't break others
+// and that partial results due to errors are NOT cached.
 func TestSearchPartialFailure(t *testing.T) {
 	oldSearchFuncs := resources.SearchFuncs
+	var callCount atomic.Int32
 	resources.SearchFuncs = map[string]func(*gin.Context, string, int64) ([]common.SearchResult, error){
 		"pods": func(_ *gin.Context, _ string, _ int64) ([]common.SearchResult, error) { //nolint:unparam // signature required by SearchFuncs
+			callCount.Add(1)
 			return []common.SearchResult{{Name: "ok-pod", ResourceType: "pods"}}, nil
 		},
 		"services": func(_ *gin.Context, _ string, _ int64) ([]common.SearchResult, error) {
+			callCount.Add(1)
 			return nil, fmt.Errorf("simulated API server error")
 		},
 		"deployments": func(_ *gin.Context, _ string, _ int64) ([]common.SearchResult, error) { //nolint:unparam // signature required by SearchFuncs
+			callCount.Add(1)
 			return []common.SearchResult{{Name: "ok-deploy", ResourceType: "deployments"}}, nil
 		},
 	}
@@ -250,6 +255,23 @@ func TestSearchPartialFailure(t *testing.T) {
 	// Should have results from pods + deployments (services failed gracefully)
 	if len(results) != 2 {
 		t.Fatalf("expected 2 results (failed resource skipped), got %d: %+v", len(results), results)
+	}
+
+	callsBefore := callCount.Load()
+
+	// Second call: should NOT be served from cache because one resource errored.
+	ctx2 := newSearchContext(t, "test-cluster")
+	results2, err := handler.Search(ctx2, "ok", 50)
+	if err != nil {
+		t.Fatalf("second Search returned error: %v", err)
+	}
+	if len(results2) != 2 {
+		t.Fatalf("expected 2 results on retry, got %d", len(results2))
+	}
+
+	callsAfter := callCount.Load()
+	if callsAfter == callsBefore {
+		t.Fatal("second call was served from cache — error results should NOT be cached")
 	}
 }
 
