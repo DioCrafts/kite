@@ -1,0 +1,80 @@
+{{- if .Values.kiteConfig.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kite.fullname" . }}-declarative-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kite.labels" . | nindent 4 }}
+data:
+  {{- if .Values.kiteConfig.oauth }}
+  oauth.yaml: |
+    oauth:
+      providers:
+        {{- range .Values.kiteConfig.oauth.providers }}
+        - name: {{ .name | quote }}
+          {{- if .issuerUrl }}
+          issuerUrl: {{ .issuerUrl | quote }}
+          {{- end }}
+          {{- if .clientId }}
+          clientId: {{ .clientId | quote }}
+          {{- end }}
+          {{- if .clientSecret }}
+          clientSecret: {{ .clientSecret | quote }}
+          {{- end }}
+          {{- if .authUrl }}
+          authUrl: {{ .authUrl | quote }}
+          {{- end }}
+          {{- if .tokenUrl }}
+          tokenUrl: {{ .tokenUrl | quote }}
+          {{- end }}
+          {{- if .userInfoUrl }}
+          userInfoUrl: {{ .userInfoUrl | quote }}
+          {{- end }}
+          {{- if .scopes }}
+          scopes: {{ .scopes | quote }}
+          {{- end }}
+          {{- if not (kindIs "invalid" .enabled) }}
+          enabled: {{ .enabled }}
+          {{- end }}
+        {{- end }}
+  {{- end }}
+  {{- if .Values.kiteConfig.roles }}
+  roles.yaml: |
+    roles:
+      {{- range .Values.kiteConfig.roles }}
+      - name: {{ .name | quote }}
+        {{- if .description }}
+        description: {{ .description | quote }}
+        {{- end }}
+        {{- if not (kindIs "invalid" .clusters) }}
+        clusters:
+          {{- toYaml .clusters | nindent 10 }}
+        {{- end }}
+        {{- if not (kindIs "invalid" .namespaces) }}
+        namespaces:
+          {{- toYaml .namespaces | nindent 10 }}
+        {{- end }}
+        {{- if not (kindIs "invalid" .resources) }}
+        resources:
+          {{- toYaml .resources | nindent 10 }}
+        {{- end }}
+        {{- if not (kindIs "invalid" .verbs) }}
+        verbs:
+          {{- toYaml .verbs | nindent 10 }}
+        {{- end }}
+        {{- if not (kindIs "invalid" .assignments) }}
+        assignments:
+          {{- range .assignments }}
+          - subjectType: {{ .subjectType | quote }}
+            subject: {{ .subject | quote }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+  {{- end }}
+  {{- if .Values.kiteConfig.generalSettings }}
+  settings.yaml: |
+    generalSettings:
+      {{- toYaml .Values.kiteConfig.generalSettings | nindent 6 }}
+  {{- end }}
+{{- end }}

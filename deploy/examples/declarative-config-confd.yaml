@@ -1,0 +1,54 @@
+## Example: Standalone declarative config files (conf.d pattern)
+##
+## These files can be placed in /etc/kite/config.d/ (or the path set in
+## KITE_CONFIG_DIR) either via ConfigMap mount, hostPath, or any volume type.
+##
+## Files are read alphabetically and merged:
+##   - OAuth providers and roles are appended across files
+##   - General settings use last-write-wins per field
+##
+## This example shows how to split config across multiple files:
+##   /etc/kite/config.d/
+##     01-oauth.yaml       ← OAuth providers
+##     02-roles-platform.yaml  ← Platform RBAC
+##     03-roles-team-alpha.yaml ← Team-specific RBAC
+##     04-settings.yaml    ← General settings
+##
+## Each file follows the same KiteConfig schema.
+
+# ── 01-oauth.yaml ────────────────────────────────────────────────────────────
+# oauth:
+#   providers:
+#     - name: "my-oidc-provider"
+#       issuerUrl: "https://accounts.google.com"
+#       clientId: "xxx.apps.googleusercontent.com"
+#       clientSecret: "GOCSPX-xxx"
+#       scopes: "openid profile email"
+#       enabled: true
+
+# ── 02-roles-platform.yaml ──────────────────────────────────────────────────
+# roles:
+#   - name: admin
+#     assignments:
+#       - { subjectType: group, subject: "platform-admins-group-id" }
+#   - name: viewer
+#     assignments:
+#       - { subjectType: group, subject: "platform-viewers-group-id" }
+
+# ── 03-roles-team-alpha.yaml ────────────────────────────────────────────────
+# roles:
+#   - name: alpha-developer
+#     description: "Alpha team developer access"
+#     namespaces: ["alpha-*"]
+#     verbs: ["get", "log", "terminal", "create", "update"]
+#     assignments:
+#       - { subjectType: group, subject: "alpha-devs-group-id" }
+
+# ── 04-settings.yaml ────────────────────────────────────────────────────────
+# generalSettings:
+#   kubectlEnabled: true
+#   enableAnalytics: false
+#   enableVersionCheck: true
+#   aiAgentEnabled: true
+#   aiProvider: "openai"
+#   aiModel: "gpt-4o"

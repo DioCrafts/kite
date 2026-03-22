@@ -305,3 +305,81 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Declarative Configuration (GitOps-ready)
+# ══════════════════════════════════════════════════════════════════════════════
+# When enabled, the chart creates a ConfigMap mounted at /etc/kite/config.d/
+# containing YAML config files. Kite watches this directory with fsnotify and
+# reconciles OAuth, RBAC, and settings to the database automatically.
+#
+# Features:
+#   - Hot reload: changes apply within seconds (no pod restart needed)
+#   - conf.d pattern: multiple files are merged alphabetically
+#   - GitOps native: works with ArgoCD, Flux, or any Helm-based pipeline
+#   - No CRDs required: configuration is a simple ConfigMap
+#   - Managed resources are tracked: manually-created resources are never touched
+#   - Orphan cleanup: if you remove a provider/role from config, it gets deleted
+#
+# For OAuth client secrets, do NOT put them in values.yaml. Instead:
+#   - Use a Kubernetes Secret and reference it via extraEnvs, or
+#   - Use External Secrets Operator / Sealed Secrets to inject them
+#   - The clientSecret field supports env var interpolation at runtime
+#
+# Example with Azure Entra ID:
+#   kiteConfig:
+#     enabled: true
+#     oauth:
+#       providers:
+#         - name: "microsoft-entra-id"
+#           issuerUrl: "https://login.microsoftonline.com/YOUR_TENANT/v2.0"
+#           clientId: "YOUR_CLIENT_ID"
+#           clientSecret: "YOUR_CLIENT_SECRET"
+#           authUrl: "https://login.microsoftonline.com/YOUR_TENANT/oauth2/v2.0/authorize"
+#           tokenUrl: "https://login.microsoftonline.com/YOUR_TENANT/oauth2/v2.0/token"
+#           userInfoUrl: "https://graph.microsoft.com/oidc/userinfo"
+#           scopes: "openid profile email User.Read"
+#     roles:
+#       - name: admin
+#         assignments:
+#           - { subjectType: group, subject: "aad-group-id-for-admins" }
+#       - name: viewer
+#         assignments:
+#           - { subjectType: group, subject: "aad-group-id-for-viewers" }
+#       - name: project-alpha-dev
+#         description: "Developer access for Project Alpha"
+#         namespaces: ["alpha-dev", "alpha-pre"]
+#         verbs: ["get", "log", "terminal"]
+#         assignments:
+#           - { subjectType: group, subject: "aad-group-id-alpha-devs" }
+#     generalSettings:
+#       kubectlEnabled: true
+#       enableAnalytics: false
+# ══════════════════════════════════════════════════════════════════════════════
+kiteConfig:
+  # Set to true to create a ConfigMap with declarative config
+  enabled: false
+  # OAuth/OIDC providers
+  # oauth:
+  #   providers:
+  #     - name: "my-oidc-provider"
+  #       issuerUrl: ""
+  #       clientId: ""
+  #       clientSecret: ""
+  #       scopes: "openid profile email"
+  # RBAC roles with assignments
+  # roles:
+  #   - name: admin
+  #     assignments:
+  #       - { subjectType: group, subject: "admin-group-id" }
+  #   - name: custom-role
+  #     description: "Custom scoped role"
+  #     namespaces: ["ns1", "ns2"]
+  #     verbs: ["get"]
+  #     assignments:
+  #       - { subjectType: group, subject: "group-id" }
+  # General settings
+  # generalSettings:
+  #   kubectlEnabled: true
+  #   enableAnalytics: false
+  #   enableVersionCheck: true

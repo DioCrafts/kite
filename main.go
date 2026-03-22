@@ -23,6 +23,7 @@ import (
 	"github.com/zxh326/kite/pkg/auth"
 	"github.com/zxh326/kite/pkg/cluster"
 	"github.com/zxh326/kite/pkg/common"
+	"github.com/zxh326/kite/pkg/config"
 	"github.com/zxh326/kite/pkg/handlers"
 	"github.com/zxh326/kite/pkg/handlers/resources"
 	"github.com/zxh326/kite/pkg/middleware"
@@ -254,6 +255,13 @@ func main() {
 		log.Fatalf("Failed to create ClusterManager: %v", err)
 	}
 
+	// Start declarative config watcher (reads /etc/kite/config.d/*.yaml)
+	configCtx, configCancel := context.WithCancel(context.Background())
+	defer configCancel()
+	if w := config.NewWatcher(); w != nil {
+		go w.Start(configCtx)
+	}
+
 	base := r.Group(common.Base)
 	// Setup router
 	setupAPIRouter(base, cm)
@@ -277,6 +285,7 @@ func main() {
 	<-quit
 
 	klog.Info("Shutting down server...")
+	configCancel() // Stop declarative config watcher
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {

@@ -16,9 +16,14 @@ spec:
   {{- end }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- if or .Values.podAnnotations .Values.kiteConfig.enabled }}
       annotations:
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.kiteConfig.enabled }}
+        checksum/declarative-config: {{ include (print $.Template.BasePath "/declarative-config.yaml") . | sha256sum }}
+        {{- end }}
       {{- end }}
       labels:
         {{- include "kite.labels" . | nindent 8 }}
@@ -73,6 +78,10 @@ spec:
             - name: KITE_BASE
               value: {{ .Values.basePath }}
             {{- end }}
+            {{- if .Values.kiteConfig.enabled }}
+            - name: KITE_CONFIG_DIR
+              value: /etc/kite/config.d
+            {{- end }}
           {{- with .Values.extraEnvs }}
           {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -96,6 +105,11 @@ spec:
             - name: {{ include "kite.fullname" . }}-storage
               mountPath: {{ .Values.db.sqlite.persistence.mountPath }}
           {{- end }}
+          {{- if .Values.kiteConfig.enabled }}
+            - name: declarative-config
+              mountPath: /etc/kite/config.d
+              readOnly: true
+          {{- end }}
       volumes:
       {{- if eq .Values.db.type "sqlite"}} 
         - name: {{ include "kite.fullname" . }}-storage
@@ -109,6 +123,11 @@ spec:
       {{- else }}
           emptyDir: {}
       {{- end }}
+      {{- end }}
+      {{- if .Values.kiteConfig.enabled }}
+        - name: declarative-config
+          configMap:
+            name: {{ include "kite.fullname" . }}-declarative-config
       {{- end }}
       {{- with .Values.volumes }}
       {{- toYaml . | nindent 8 }}

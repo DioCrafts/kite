@@ -90,6 +90,10 @@ func InitDB() {
 			panic("failed to enable sqlite foreign keys: " + err.Error())
 		}
 	}
+	// Deduplicate role_assignments before adding the unique index so
+	// upgrades on clusters with pre-existing duplicates don't fail.
+	deduplicateRoleAssignments()
+
 	models := []interface{}{
 		User{},
 		Cluster{},
@@ -113,5 +117,51 @@ func InitDB() {
 		sqldb.SetMaxOpenConns(common.DBMaxOpenConns)
 		sqldb.SetMaxIdleConns(common.DBMaxIdleConns)
 		sqldb.SetConnMaxLifetime(common.DBMaxIdleTime)
+	}
+}
+
+// deduplicateRoleAssignments removes duplicate (role_id, subject_type, subject)
+// rows from the role_assignments table, keeping only the row with the lowest ID.
+// This must run BEFORE AutoMigrate adds the composite unique index to avoid a
+// migration failure on clusters that already have duplicates.
+func deduplicateRoleAssignments() {
+	// Only act if the table already exists (fresh installs have no data yet).
+	if !DB.Migrator().HasTable(&RoleAssignment{}) {
+		return
+	}
+
+	// Find groups with more than one row for the same (role_id, subject_type, subject).
+	type dupGroup struct {
+		RoleID      uint   `gorm:"column:role_id"`
+		SubjectType string `gorm:"column:subject_type"`
+		Subject     string `gorm:"column:subject"`
+		MinID       uint   `gorm:"column:min_id"`
+	}
+	var groups []dupGroup
+	if err := DB.Raw(`
+		SELECT role_id, subject_type, subject, MIN(id) AS min_id
+		FROM role_assignments
+		GROUP BY role_id, subject_type, subject
+		HAVING COUNT(*) > 1
+	`).Scan(&groups).Error; err != nil {
+		klog.Warningf("deduplicateRoleAssignments: query failed (table may not exist yet): %v", err)
+		return
+	}
+	if len(groups) == 0 {
+		return
+	}
+
+	for _, g := range groups {
+		res := DB.Exec(
+			"DELETE FROM role_assignments WHERE role_id = ? AND subject_type = ? AND subject = ? AND id != ?",
+			g.RoleID, g.SubjectType, g.Subject, g.MinID,
+		)
+		if res.Error != nil {
+			klog.Errorf("deduplicateRoleAssignments: failed to clean duplicates for (%d, %s, %s): %v",
+				g.RoleID, g.SubjectType, g.Subject, res.Error)
+		} else if res.RowsAffected > 0 {
+			klog.Infof("deduplicateRoleAssignments: removed %d duplicate(s) for (%d, %s, %s)",
+				res.RowsAffected, g.RoleID, g.SubjectType, g.Subject)
+		}
 	}
 }

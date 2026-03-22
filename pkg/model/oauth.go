@@ -14,6 +14,10 @@ type OAuthProvider struct {
 	Issuer       string          `json:"issuer" gorm:"type:varchar(255)"`
 	Enabled      bool            `json:"enabled" gorm:"type:boolean;default:true"`
 
+	// ManagedBy tracks resources created by declarative file-based config.
+	// Empty means manually created (UI/API).
+	ManagedBy string `json:"managedBy,omitempty" gorm:"type:varchar(255);index;default:''"`
+
 	// Auto-generated redirect URL
 	RedirectURL string `json:"-" gorm:"-"`
 }
@@ -32,11 +36,22 @@ func GetEnabledOAuthProviders() ([]OAuthProvider, error) {
 	return providers, err
 }
 
-// GetOAuthProviderByName returns an OAuth provider by name
+// GetOAuthProviderByName returns an OAuth provider by name (enabled only).
 func GetOAuthProviderByName(name string) (OAuthProvider, error) {
 	var provider OAuthProvider
 	name = strings.ToLower(name)
 	err := DB.Where("name = ? AND enabled = ?", name, true).First(&provider).Error
+	if err != nil {
+		return OAuthProvider{}, err
+	}
+	return provider, nil
+}
+
+// GetOAuthProviderByNameUnfiltered returns an OAuth provider by name regardless of enabled status.
+func GetOAuthProviderByNameUnfiltered(name string) (OAuthProvider, error) {
+	var provider OAuthProvider
+	name = strings.ToLower(name)
+	err := DB.Where("name = ?", name).First(&provider).Error
 	if err != nil {
 		return OAuthProvider{}, err
 	}

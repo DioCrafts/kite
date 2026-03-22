@@ -7,6 +7,10 @@ type Role struct {
 	Description string `json:"description" gorm:"type:text"`
 	IsSystem    bool   `json:"isSystem" gorm:"type:boolean;not null;default:false"`
 
+	// ManagedBy records the KiteConfig CR name that created this role.
+	// Empty means manually created (UI/API) or a system role.
+	ManagedBy string `json:"managedBy,omitempty" gorm:"type:varchar(255);index;default:''"`
+
 	// Rules
 	Clusters   SliceString `json:"clusters" gorm:"type:text"`
 	Resources  SliceString `json:"resources" gorm:"type:text"`
@@ -21,10 +25,14 @@ type Role struct {
 type RoleAssignment struct {
 	Model
 
-	RoleID uint `json:"roleId" gorm:"index;not null;constraint:OnDelete:CASCADE"`
+	RoleID uint `json:"roleId" gorm:"not null;constraint:OnDelete:CASCADE;uniqueIndex:idx_role_assignment_uniq,priority:1"`
 
-	SubjectType string `json:"subjectType" gorm:"type:varchar(20);not null;index:idx_role_assignments_subject,priority:2"`
-	Subject     string `json:"subject" gorm:"type:varchar(255);not null;index:idx_role_assignments_subject,priority:1"`
+	SubjectType string `json:"subjectType" gorm:"type:varchar(20);not null;index:idx_role_assignments_subject,priority:2;uniqueIndex:idx_role_assignment_uniq,priority:2"`
+	Subject     string `json:"subject" gorm:"type:varchar(255);not null;index:idx_role_assignments_subject,priority:1;uniqueIndex:idx_role_assignment_uniq,priority:3"`
+
+	// ManagedBy records the KiteConfig CR name that created this assignment.
+	// Empty means manually created (UI/API).
+	ManagedBy string `json:"managedBy,omitempty" gorm:"type:varchar(255);index;default:''"`
 }
 
 // Convenience constants for SubjectType

@@ -1,0 +1,61 @@
+## Example: Declarative config with Azure Entra ID OAuth + RBAC roles
+##
+## Usage with Helm:
+##   helm upgrade --install kite kite/kite -f kite-values-entra-id.yaml
+##
+## Usage without Helm (standalone ConfigMap):
+##   1. Create the ConfigMap from this file:
+##      kubectl create configmap kite-declarative-config \
+##        --namespace kite \
+##        --from-file=oauth.yaml=deploy/examples/entra-id-oauth.yaml \
+##        --from-file=roles.yaml=deploy/examples/entra-id-roles.yaml
+##   2. Mount it at /etc/kite/config.d/ in the Kite Deployment
+##   3. Set env KITE_CONFIG_DIR=/etc/kite/config.d (optional, it's the default)
+##
+## For OAuth secrets, create a separate K8s Secret and inject via env vars:
+##   kubectl create secret generic kite-oauth-credentials \
+##     --namespace kite \
+##     --from-literal=CLIENT_ID=your-client-id \
+##     --from-literal=CLIENT_SECRET=your-client-secret
+##
+## Then reference in the Helm values extraEnvs or Deployment envFrom.
+
+# ── Helm values.yaml example ─────────────────────────────────────────────────
+kiteConfig:
+  enabled: true
+  oauth:
+    providers:
+      - name: "microsoft-entra-id"
+        issuerUrl: "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0"
+        clientId: "YOUR_CLIENT_ID"
+        clientSecret: "YOUR_CLIENT_SECRET"
+        authUrl: "https://login.microsoftonline.com/YOUR_TENANT_ID/oauth2/v2.0/authorize"
+        tokenUrl: "https://login.microsoftonline.com/YOUR_TENANT_ID/oauth2/v2.0/token"
+        userInfoUrl: "https://graph.microsoft.com/oidc/userinfo"
+        scopes: "openid profile email User.Read"
+        enabled: true
+  roles:
+    # Assign Entra ID groups to the built-in admin role
+    - name: admin
+      assignments:
+        - subjectType: group
+          subject: "00000000-0000-0000-0000-000000000001"  # Platform Admins group ID
+    # Assign Entra ID groups to the built-in viewer role
+    - name: viewer
+      assignments:
+        - subjectType: group
+          subject: "00000000-0000-0000-0000-000000000002"  # Platform Viewers group ID
+    # Custom project-scoped role
+    - name: project-alpha-developer
+      description: "Developer access for Project Alpha namespaces"
+      clusters: ["*"]
+      namespaces: ["alpha-dev", "alpha-pre", "alpha-pro"]
+      resources: ["*"]
+      verbs: ["get", "log", "terminal"]
+      assignments:
+        - subjectType: group
+          subject: "00000000-0000-0000-0000-000000000003"  # Alpha Dev Team group ID
+  generalSettings:
+    kubectlEnabled: true
+    enableAnalytics: false
+    enableVersionCheck: true
