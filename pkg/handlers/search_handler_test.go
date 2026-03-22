@@ -293,6 +293,55 @@ func TestGlobalSearchCacheDoesNotTriggerBackgroundRefresh(t *testing.T) {
 	}
 }
 
+// TestSearchPanicDoesNotCacheResults verifies that when a search function panics,
+// partial results are still returned but NOT cached (avoids serving stale incomplete data).
+func TestSearchPanicDoesNotCacheResults(t *testing.T) {
+	oldSearchFuncs := resources.SearchFuncs
+	var callCount atomic.Int32
+
+	resources.SearchFuncs = map[string]func(*gin.Context, string, int64) ([]common.SearchResult, error){
+		"pods": func(_ *gin.Context, _ string, _ int64) ([]common.SearchResult, error) { //nolint:unparam // signature required by SearchFuncs
+			callCount.Add(1)
+			return []common.SearchResult{{Name: "ok-pod", ResourceType: "pods"}}, nil
+		},
+		"services": func(_ *gin.Context, _ string, _ int64) ([]common.SearchResult, error) {
+			callCount.Add(1)
+			panic("simulated nil-pointer in service search")
+		},
+	}
+	t.Cleanup(func() { resources.SearchFuncs = oldSearchFuncs })
+
+	handler := NewSearchHandler()
+
+	// First call: one func panics → partial results returned, cache NOT written
+	ctx1 := newSearchContext(t, "test-cluster")
+	results, err := handler.Search(ctx1, "ok", 50)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if len(results) != 1 || results[0].Name != "ok-pod" {
+		t.Fatalf("expected partial result [ok-pod], got %+v", results)
+	}
+
+	callsBefore := callCount.Load()
+
+	// Second call: should NOT be served from cache (cache was skipped due to panic).
+	// Both search funcs must be invoked again.
+	ctx2 := newSearchContext(t, "test-cluster")
+	results2, err := handler.Search(ctx2, "ok", 50)
+	if err != nil {
+		t.Fatalf("second Search returned error: %v", err)
+	}
+	if len(results2) != 1 {
+		t.Fatalf("expected 1 result on retry, got %d", len(results2))
+	}
+
+	callsAfter := callCount.Load()
+	if callsAfter == callsBefore {
+		t.Fatal("second call was served from cache — panic results should NOT be cached")
+	}
+}
+
 // TestSearchEmptyResourceFuncs verifies Search handles zero searchable types gracefully.
 func TestSearchEmptyResourceFuncs(t *testing.T) {
 	oldSearchFuncs := resources.SearchFuncs

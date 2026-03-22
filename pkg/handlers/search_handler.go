@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -76,6 +77,7 @@ func (h *SearchHandler) Search(c *gin.Context, query string, limit int) ([]commo
 
 	// Execute searches in parallel using errgroup
 	resultSlices := make([][]common.SearchResult, len(entries))
+	var hadPanic atomic.Bool
 	g, _ := errgroup.WithContext(context.Background())
 
 	for i, entry := range entries {
@@ -83,7 +85,7 @@ func (h *SearchHandler) Search(c *gin.Context, query string, limit int) ([]commo
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("search: resource %q panicked: %v", entry.name, r)
-					err = nil
+					hadPanic.Store(true)
 				}
 			}()
 			results, searchErr := entry.fn(c, q, int64(limit))
@@ -112,7 +114,11 @@ func (h *SearchHandler) Search(c *gin.Context, query string, limit int) ([]commo
 		allResults = allResults[:limit]
 	}
 
-	h.cache.Add(h.createCacheKey(getSearchClusterName(c), query, limit), allResults)
+	// Only cache results when no panic occurred — avoids caching incomplete
+	// results that would be served as valid 200 OK responses for the TTL duration.
+	if !hadPanic.Load() {
+		h.cache.Add(h.createCacheKey(getSearchClusterName(c), query, limit), allResults)
+	}
 	return allResults, nil
 }
 
