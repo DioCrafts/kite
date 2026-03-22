@@ -233,7 +233,7 @@ func TestSearchPartialFailure(t *testing.T) {
 			callCount.Add(1)
 			return []common.SearchResult{{Name: "ok-pod", ResourceType: "pods"}}, nil
 		},
-		"services": func(_ *gin.Context, _ string, _ int64) ([]common.SearchResult, error) {
+		"services": func(_ *gin.Context, _ string, _ int64) ([]common.SearchResult, error) { //nolint:unparam // signature required by SearchFuncs
 			callCount.Add(1)
 			return nil, fmt.Errorf("simulated API server error")
 		},
