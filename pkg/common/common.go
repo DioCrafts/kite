@@ -10,6 +10,7 @@ import (
 
 const (
 	JWTExpirationSeconds = 24 * 60 * 60 // 24 hours
+	DefaultJWTSecret     = "kite-default-jwt-secret-key-change-in-production"
 
 	NodeTerminalPodName    = "kite-node-terminal-agent"
 	KubectlTerminalPodName = "kite-kubectl-agent"
@@ -24,7 +25,7 @@ const (
 
 var (
 	Port            = "8080"
-	JwtSecret       = "kite-default-jwt-secret-key-change-in-production"
+	JwtSecret       = DefaultJWTSecret
 	EnableAnalytics = false
 	Host            = ""
 	Base            = ""
@@ -85,6 +86,8 @@ func LoadEnvs() {
 
 	if key := os.Getenv("KITE_ENCRYPT_KEY"); key != "" {
 		KiteEncryptKey = key
+	} else {
+		klog.Warningf("KITE_ENCRYPT_KEY is not set, using default key, this is not secure for production!")
 	}
 
 	if v := os.Getenv("ANONYMOUS_USER_ENABLED"); v == "true" {

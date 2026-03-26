@@ -53,9 +53,10 @@ anonymousUserEnabled: false
 # Ignored if using existingSecret
 jwtSecret: ""
 
-# Key for encrypting sensitive data. Auto-generated if empty.
+# This is the key used for encrypting sensitive data
+# Change this in production
 # Ignored if using existingSecret
-encryptKey: ""
+encryptKey: "kite-default-encryption-key-change-in-production"
 
 # Superuser configuration
 # Used to create an initial superuser account on first startup

@@ -242,7 +242,6 @@ func main() {
 	r.Use(middleware.Logger())
 	r.Use(middleware.CORS())
 	model.InitDB()
-	model.EnsureSecrets()
 	if _, err := model.GetGeneralSetting(); err != nil {
 		klog.Warningf("Failed to load general setting: %v", err)
 	}
