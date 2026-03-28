@@ -3,8 +3,10 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	expirable "github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/zxh326/kite/pkg/common"
 	"github.com/zxh326/kite/pkg/utils"
 	"gorm.io/gorm"
@@ -59,6 +61,37 @@ func CountUsers() (count int64, err error) {
 	return count, DB.Model(&User{}).Count(&count).Error
 }
 
+// userCache is a thread-safe LRU with 30s TTL.
+// Eliminates the per-request SELECT in RequireAuth (~1-5ms → ~50ns).
+// Capacity 256 is generous for a K8s dashboard user base.
+var userCache = expirable.NewLRU[uint64, *User](256, nil, 30*time.Second)
+
+// GetUserByIDCached returns the user from cache if available, otherwise
+// fetches from DB and stores it.  Used on the hot auth path.
+func GetUserByIDCached(id uint64) (*User, error) {
+	if u, ok := userCache.Get(id); ok {
+		// Return a shallow copy so callers (RequireAuth, etc.) can safely
+		// mutate fields like Roles without racing on the cached pointer.
+		copy := *u
+		return &copy, nil
+	}
+	u, err := GetUserByID(id)
+	if err != nil {
+		return nil, err
+	}
+	userCache.Add(id, u)
+	// Also return a copy on miss path to keep the cached entry immutable.
+	copy := *u
+	return &copy, nil
+}
+
+// InvalidateUserCache removes a user from the auth cache.
+// Called after every successful mutation so that security-sensitive changes
+// (disable, delete, password reset) take effect on the next auth check.
+func InvalidateUserCache(id uint64) {
+	userCache.Remove(id)
+}
+
 func GetUserByID(id uint64) (*User, error) {
 	var user User
 	if err := DB.Where("id = ?", id).First(&user).Error; err != nil {
@@ -93,7 +126,9 @@ func FindWithSubOrUpsertUser(user *User) error {
 	user.ID = existingUser.ID
 	user.CreatedAt = existingUser.CreatedAt
 	user.SidebarPreference = existingUser.SidebarPreference
-	return DB.Save(user).Error
+	err := DB.Save(user).Error
+	InvalidateUserCache(uint64(user.ID))
+	return err
 }
 
 func GetUserByUsername(username string) (*User, error) {
@@ -175,12 +210,16 @@ func LoginUser(u *User) error {
 // DeleteUserByID removes a user by ID
 func DeleteUserByID(id uint) error {
 	_ = DB.Where("operator_id = ?", id).Delete(&ResourceHistory{}).Error
-	return DB.Delete(&User{}, id).Error
+	err := DB.Delete(&User{}, id).Error
+	InvalidateUserCache(uint64(id))
+	return err
 }
 
 // UpdateUser saves provided user (expects ID set)
 func UpdateUser(user *User) error {
-	return DB.Save(user).Error
+	err := DB.Save(user).Error
+	InvalidateUserCache(uint64(user.ID))
+	return err
 }
 
 // ResetPasswordByID sets a new password (hashed) for user with given id
@@ -194,16 +233,94 @@ func ResetPasswordByID(id uint, plainPassword string) error {
 		return err
 	}
 	u.Password = hash
-	return DB.Save(&u).Error
+	err = DB.Save(&u).Error
+	InvalidateUserCache(uint64(id))
+	return err
 }
 
 // SetUserEnabled sets enabled flag for a user
 func SetUserEnabled(id uint, enabled bool) error {
-	return DB.Model(&User{}).Where("id = ?", id).Update("enabled", enabled).Error
+	err := DB.Model(&User{}).Where("id = ?", id).Update("enabled", enabled).Error
+	InvalidateUserCache(uint64(id))
+	return err
 }
 
 func CheckPassword(hashedPassword, plainPassword string) bool {
 	return utils.CheckPasswordHash(plainPassword, hashedPassword)
+}
+
+func UpsertLDAPUser(user *User) (*User, error) {
+	if user == nil {
+		return nil, errors.New("user is nil")
+	}
+
+	user.Username = strings.TrimSpace(user.Username)
+	if user.Username == "" {
+		return nil, errors.New("username is empty")
+	}
+
+	now := time.Now()
+	user.Provider = AuthProviderLDAP
+	user.Password = ""
+	user.LastLoginAt = &now
+
+	var existingUser User
+	if err := DB.Where("username = ?", user.Username).First(&existingUser).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			user.Enabled = true
+			if strings.TrimSpace(user.Name) == "" {
+				user.Name = user.Username
+			}
+			err = DB.Create(user).Error
+			if err == nil {
+				InvalidateUserCache(uint64(user.ID))
+				return user, nil
+			}
+			if !isUniqueConstraintError(err) {
+				return nil, err
+			}
+			if err := DB.Where("username = ?", user.Username).First(&existingUser).Error; err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	}
+
+	if existingUser.Provider != AuthProviderLDAP {
+		return nil, ErrUserProviderConflict
+	}
+
+	user.ID = existingUser.ID
+	user.CreatedAt = existingUser.CreatedAt
+	user.Enabled = existingUser.Enabled
+	user.SidebarPreference = existingUser.SidebarPreference
+	user.Sub = existingUser.Sub
+	if strings.TrimSpace(user.Name) == "" {
+		user.Name = existingUser.Name
+	}
+	if strings.TrimSpace(user.AvatarURL) == "" {
+		user.AvatarURL = existingUser.AvatarURL
+	}
+
+	err := DB.Save(user).Error
+	if err == nil {
+		InvalidateUserCache(uint64(user.ID))
+	}
+	return user, err
+}
+
+func isUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "unique constraint failed") ||
+		strings.Contains(message, "duplicate key value") ||
+		strings.Contains(message, "duplicate entry")
 }
 
 func AddSuperUser(user *User) error {
@@ -235,6 +352,8 @@ func ListAPIKeyUsers() (users []User, err error) {
 }
 
 var (
+	ErrUserProviderConflict = errors.New("user exists with different provider")
+
 	AnonymousUser = User{
 		Model: Model{
 			ID: 0,

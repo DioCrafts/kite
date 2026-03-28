@@ -10,6 +10,7 @@ import (
 
 const (
 	JWTExpirationSeconds = 24 * 60 * 60 // 24 hours
+	DefaultJWTSecret     = "kite-default-jwt-secret-key-change-in-production"
 
 	NodeTerminalPodName    = "kite-node-terminal-agent"
 	KubectlTerminalPodName = "kite-kubectl-agent"
@@ -24,7 +25,7 @@ const (
 
 var (
 	Port            = "8080"
-	JwtSecret       = "kite-default-jwt-secret-key-change-in-production"
+	JwtSecret       = DefaultJWTSecret
 	EnableAnalytics = false
 	Host            = ""
 	Base            = ""
@@ -42,6 +43,11 @@ var (
 
 	DisableGZIP        = true
 	EnableVersionCheck = true
+
+	// CORSAllowedOrigins is empty by default (no CORS in production).
+	// Developers can set CORS_ALLOWED_ORIGINS=http://localhost:5173 for
+	// local Vite dev server cross-origin requests.
+	CORSAllowedOrigins []string
 
 	APIKeyProvider = "api_key"
 
@@ -110,5 +116,16 @@ func LoadEnvs() {
 		}
 		Base = strings.TrimRight(v, "/")
 		klog.Infof("Using base path: %s", Base)
+	}
+
+	if v := os.Getenv("CORS_ALLOWED_ORIGINS"); v != "" {
+		origins := strings.Split(v, ",")
+		for _, o := range origins {
+			o = strings.TrimSpace(o)
+			if o != "" {
+				CORSAllowedOrigins = append(CORSAllowedOrigins, o)
+			}
+		}
+		klog.Warningf("CORS enabled for origins: %v — disable in production", CORSAllowedOrigins)
 	}
 }
