@@ -274,6 +274,7 @@ func TestNodeHandlerList_NodesWithoutPods(t *testing.T) {
 	// Allocatable should still be populated.
 	assert.Equal(t, int64(4000), m.CPULimit)
 	assert.Equal(t, int64(8*1024*1024*1024), m.MemoryLimit)
+	assert.Equal(t, int64(110), m.PodsLimit)
 }
 
 // TestNodeHandlerList_MultipleContainersPerPod verifies that resource requests
@@ -458,6 +459,7 @@ func TestNodeHandlerList_Uncached_NodesWithoutPods(t *testing.T) {
 	assert.Equal(t, int64(0), m.CPURequest)
 	assert.Equal(t, int64(0), m.MemoryRequest)
 	assert.Equal(t, int64(4000), m.CPULimit)
+	assert.Equal(t, int64(110), m.PodsLimit)
 }
 
 // TestNodeHandlerList_Uncached_MultipleContainersPerPod verifies the fallback

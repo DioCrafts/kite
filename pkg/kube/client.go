@@ -61,9 +61,10 @@ func NewClient(config *rest.Config) (*K8sClient, error) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	cacheEnabled := os.Getenv("DISABLE_CACHE") != "true"
 
 	var c client.Client
-	if os.Getenv("DISABLE_CACHE") == "true" {
+	if !cacheEnabled {
 		c, err = client.New(config, client.Options{
 			Scheme: runtimeScheme,
 		})
@@ -111,7 +112,6 @@ func NewClient(config *rest.Config) (*K8sClient, error) {
 		c = mgr.GetClient()
 	}
 
-	cacheEnabled := os.Getenv("DISABLE_CACHE") != "true"
 	return &K8sClient{
 		Client:        c,
 		ClientSet:     clientset,
