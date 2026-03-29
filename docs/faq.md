@@ -108,6 +108,42 @@ You can get support through:
 - [GitHub Issues](https://github.com/kite-org/kite/issues) for bug reports and feature requests
 - [Slack Community](https://join.slack.com/t/kite-dashboard/shared_invite/zt-3amy6f23n-~QZYoricIOAYtgLs_JagEw) for questions and community support
 
+## Plugin Issues
+
+### Plugin shows `failed` state
+
+Call the admin endpoint to read the exact error:
+
+```bash
+curl -s /api/v1/admin/plugins/ | jq '.[] | select(.state == "failed") | {name, error}'
+```
+
+Common causes:
+- Binary is not executable or compiled for the wrong OS/arch — rebuild with `kite-plugin build`
+- `manifest.yaml` is missing or has an empty `name`/`version` field — run `kite-plugin validate`
+- A declared dependency plugin is missing or its version doesn't satisfy the constraint
+- The plugin process panicked on startup — check Kite's stderr logs for the subprocess output
+
+After fixing, hot-reload without restarting Kite:
+
+```bash
+curl -X POST /api/v1/admin/plugins/<name>/reload
+```
+
+### Plugin frontend is not loading
+
+Open the browser DevTools console. Module Federation errors look like:
+
+```
+TypeError: Failed to fetch dynamically imported module: /api/v1/plugins/my-plugin/static/Dashboard.js
+```
+
+Check:
+1. The `frontend/dist/` directory was built — run `kite-plugin build` inside the plugin folder
+2. The `remoteEntry` path in `manifest.yaml` matches the actual output filename produced by `vite.config.ts`
+3. The exposed module key in `manifest.yaml` `exposedModules` exactly matches the `exposes` key in `vite.config.ts`
+4. You are not bundling `react`, `react-dom`, `react-router-dom`, or `@tanstack/react-query` — these must be externalized via `definePluginFederation()`
+
 ---
 
 **Didn't find what you're looking for?** Feel free to [open an issue](https://github.com/kite-org/kite/issues/new) on GitHub or start a [discussion](https://github.com/kite-org/kite/discussions).

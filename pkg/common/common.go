@@ -52,6 +52,8 @@ var (
 	APIKeyProvider = "api_key"
 
 	AgentPodNamespace = "kube-system"
+
+	PluginDir = "./plugins"
 )
 
 func LoadEnvs() {
@@ -116,6 +118,10 @@ func LoadEnvs() {
 		}
 		Base = strings.TrimRight(v, "/")
 		klog.Infof("Using base path: %s", Base)
+	}
+
+	if v := os.Getenv("KITE_PLUGIN_DIR"); v != "" {
+		PluginDir = v
 	}
 
 	if v := os.Getenv("CORS_ALLOWED_ORIGINS"); v != "" {

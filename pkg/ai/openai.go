@@ -43,7 +43,7 @@ func (a *Agent) processChatOpenAI(c *gin.Context, req *ChatRequest, sendEvent fu
 
 func (a *Agent) continueChatOpenAI(c *gin.Context, session pendingSession, sendEvent func(SSEEvent)) error {
 	ctx := c.Request.Context()
-	result, isError := ExecuteTool(ctx, c, a.cs, session.ToolCall.Name, session.ToolCall.Args)
+	result, isError := ExecuteTool(ctx, c, a.cs, a.pm, session.ToolCall.Name, session.ToolCall.Args)
 	return a.continueChatOpenAIWithToolResult(c, session, result, isError, sendEvent)
 }
 
@@ -69,7 +69,7 @@ func (a *Agent) runOpenAIConversation(
 	messages []openai.ChatCompletionMessageParamUnion,
 	sendEvent func(SSEEvent),
 ) {
-	tools := OpenAIToolDefs(a.cs)
+	tools := OpenAIToolDefs(a.cs, a.pm)
 
 	maxIterations := 100
 	for i := 0; i < maxIterations; i++ {
@@ -185,7 +185,7 @@ func (a *Agent) runOpenAIConversation(
 				return
 			}
 
-			result, isError := ExecuteTool(ctx, c, a.cs, toolName, args)
+			result, isError := ExecuteTool(ctx, c, a.cs, a.pm, toolName, args)
 
 			sendEvent(SSEEvent{
 				Event: "tool_result",

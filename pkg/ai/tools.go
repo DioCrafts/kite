@@ -5,6 +5,7 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/shared"
 	"github.com/zxh326/kite/pkg/cluster"
+	"github.com/zxh326/kite/pkg/plugin"
 )
 
 type agentToolDefinition struct {
@@ -14,7 +15,7 @@ type agentToolDefinition struct {
 	Required    []string
 }
 
-func toolDefinitions(cs *cluster.ClientSet) []agentToolDefinition {
+func toolDefinitions(cs *cluster.ClientSet, pm *plugin.PluginManager) []agentToolDefinition {
 	tools := []agentToolDefinition{
 		{
 			Name:        requestChoiceTool,
@@ -255,6 +256,18 @@ func toolDefinitions(cs *cluster.ClientSet) []agentToolDefinition {
 		})
 	}
 
+	// Inject plugin AI tools
+	if pm != nil {
+		for _, pt := range pm.AllAITools() {
+			tools = append(tools, agentToolDefinition{
+				Name:        pt.Definition.Name,
+				Description: pt.Definition.Description,
+				Properties:  pt.Definition.Properties,
+				Required:    pt.Definition.Required,
+			})
+		}
+	}
+
 	return tools
 }
 
@@ -283,8 +296,8 @@ func interactionOptionsSchema(description string) map[string]any {
 	}
 }
 
-func OpenAIToolDefs(cs *cluster.ClientSet) []openai.ChatCompletionToolParam {
-	defs := toolDefinitions(cs)
+func OpenAIToolDefs(cs *cluster.ClientSet, pm *plugin.PluginManager) []openai.ChatCompletionToolParam {
+	defs := toolDefinitions(cs, pm)
 	tools := make([]openai.ChatCompletionToolParam, 0, len(defs))
 
 	for _, def := range defs {
@@ -308,8 +321,8 @@ func OpenAIToolDefs(cs *cluster.ClientSet) []openai.ChatCompletionToolParam {
 	return tools
 }
 
-func AnthropicToolDefs(cs *cluster.ClientSet) []anthropic.ToolUnionParam {
-	defs := toolDefinitions(cs)
+func AnthropicToolDefs(cs *cluster.ClientSet, pm *plugin.PluginManager) []anthropic.ToolUnionParam {
+	defs := toolDefinitions(cs, pm)
 	tools := make([]anthropic.ToolUnionParam, 0, len(defs))
 
 	for _, def := range defs {

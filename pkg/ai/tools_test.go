@@ -68,11 +68,11 @@ func TestToolDefinitionsPrometheusToggle(t *testing.T) {
 		return false
 	}
 
-	if got := hasPrometheusTool(toolDefinitions(nil)); got {
+	if got := hasPrometheusTool(toolDefinitions(nil, nil)); got {
 		t.Fatalf("expected no Prometheus tool when client is absent")
 	}
 
-	if got := hasPrometheusTool(toolDefinitions(&cluster.ClientSet{PromClient: &prometheus.Client{}})); !got {
+	if got := hasPrometheusTool(toolDefinitions(&cluster.ClientSet{PromClient: &prometheus.Client{}}, nil)); !got {
 		t.Fatalf("expected Prometheus tool when client is present")
 	}
 }

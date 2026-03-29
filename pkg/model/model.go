@@ -101,6 +101,7 @@ func InitDB() {
 		ResourceHistory{},
 		ResourceTemplate{},
 		PendingSession{},
+		PluginSetting{},
 	}
 	for _, model := range models {
 		err = DB.AutoMigrate(model)

@@ -1,0 +1,50 @@
+name: backup-manager
+version: 1.0.0
+description: Kubernetes backup management with simulated CRD support
+author: Kite Team
+
+requires: []
+
+permissions:
+  - resource: pods
+    verbs: [get, list]
+  - resource: deployments
+    verbs: [get, list]
+  - resource: namespaces
+    verbs: [get, list]
+
+frontend:
+  remoteEntry: /plugins/backup-manager/static/remoteEntry.js
+  exposedModules:
+    ./BackupList: BackupList
+    ./BackupSettings: BackupSettings
+  routes:
+    - path: /backups
+      module: ./BackupList
+      sidebarEntry:
+        title: Backups
+        icon: database
+        section: operations
+  settingsPanel: ./BackupSettings
+
+aiTools:
+  - name: create_backup
+    description: "Create a backup of a Kubernetes namespace"
+  - name: list_backups
+    description: "List recent backups"
+  - name: restore_backup
+    description: "Restore a previously created backup"
+
+settings:
+  - name: retentionDays
+    type: number
+    default: "30"
+    label: "Backup retention period (days)"
+  - name: maxBackups
+    type: number
+    default: "50"
+    label: "Maximum number of stored backups"
+  - name: defaultNamespace
+    type: text
+    default: ""
+    label: "Default namespace for backups"

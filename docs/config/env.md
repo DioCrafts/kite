@@ -17,3 +17,5 @@ Kite supports several environment variables by default to change the default val
 - **ENABLE_ANALYTICS**: Enable data analytics functionality, default value is `false`. When enabled, Kite will collect limited data to help improve the product.
 
 - **PORT**: Port on which Kite runs, default value is `8080`.
+
+- **KITE_PLUGIN_DIR**: Directory where Kite looks for installed plugins. Default is `./plugins/` relative to the Kite binary. Each subdirectory should contain a compiled plugin binary and a `manifest.yaml`.

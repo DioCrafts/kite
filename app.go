@@ -9,11 +9,12 @@ import (
 	"github.com/zxh326/kite/pkg/handlers"
 	"github.com/zxh326/kite/pkg/middleware"
 	"github.com/zxh326/kite/pkg/model"
+	"github.com/zxh326/kite/pkg/plugin"
 	"github.com/zxh326/kite/pkg/rbac"
 	"k8s.io/klog/v2"
 )
 
-func initializeApp() (*cluster.ClusterManager, error) {
+func initializeApp() (*cluster.ClusterManager, *plugin.PluginManager, error) {
 	common.LoadEnvs()
 	if klog.V(1).Enabled() {
 		gin.SetMode(gin.DebugMode)
@@ -30,10 +31,20 @@ func initializeApp() (*cluster.ClusterManager, error) {
 	handlers.InitTemplates()
 	internal.LoadConfigFromEnv()
 
-	return cluster.NewClusterManager()
+	cm, err := cluster.NewClusterManager()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	pm := plugin.NewPluginManager(common.PluginDir)
+	if err := pm.LoadPlugins(); err != nil {
+		klog.Warningf("Failed to load plugins: %v", err)
+	}
+
+	return cm, pm, nil
 }
 
-func buildEngine(cm *cluster.ClusterManager) *gin.Engine {
+func buildEngine(cm *cluster.ClusterManager, pm *plugin.PluginManager) *gin.Engine {
 	r := gin.New()
 	r.Use(middleware.Metrics())
 	if !common.DisableGZIP {
@@ -43,9 +54,10 @@ func buildEngine(cm *cluster.ClusterManager) *gin.Engine {
 	r.Use(gin.Recovery())
 	r.Use(middleware.Logger())
 	r.Use(middleware.DevCORS(common.CORSAllowedOrigins))
+	r.Use(pm.PluginMiddleware())
 
 	base := r.Group(common.Base)
-	setupAPIRouter(base, cm)
+	setupAPIRouter(base, cm, pm)
 	setupStatic(r)
 
 	return r

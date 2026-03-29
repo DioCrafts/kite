@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/zxh326/kite/pkg/cluster"
 	"github.com/zxh326/kite/pkg/common"
+	"github.com/zxh326/kite/pkg/plugin"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	batchv1 "k8s.io/api/batch/v1"
@@ -48,7 +49,7 @@ type Restartable interface {
 
 var handlers = map[string]resourceHandler{}
 
-func RegisterRoutes(group *gin.RouterGroup) {
+func RegisterRoutes(group *gin.RouterGroup, pm *plugin.PluginManager) {
 	handlers = map[string]resourceHandler{
 		"pods":                     NewPodHandler(),
 		"namespaces":               NewGenericResourceHandler[*corev1.Namespace, *corev1.NamespaceList]("namespaces", true, false),
@@ -94,6 +95,21 @@ func RegisterRoutes(group *gin.RouterGroup) {
 
 		if handler.Searchable() {
 			RegisterSearchFunc(name, handler.Search)
+		}
+	}
+
+	// Register plugin resource handlers
+	if pm != nil {
+		for name, rh := range pm.AllResourceHandlers() {
+			adapter := newPluginResourceAdapter(rh)
+			handlers[name] = adapter
+			g := group.Group("/" + name)
+			adapter.registerCustomRoutes(g)
+			if adapter.IsClusterScoped() {
+				registerClusterScopeRoutes(g, adapter)
+			} else {
+				registerNamespaceScopeRoutes(g, adapter)
+			}
 		}
 	}
 

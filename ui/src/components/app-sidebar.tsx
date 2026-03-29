@@ -2,6 +2,8 @@ import * as React from 'react'
 import { useMemo } from 'react'
 import Icon from '@/assets/icon.svg'
 import { useSidebarConfig } from '@/contexts/sidebar-config-context'
+import { usePlugins } from '@/contexts/plugin-context'
+import { toTablerIconName } from '@/lib/plugin-loader'
 import { CollapsibleContent } from '@radix-ui/react-collapsible'
 import { IconLayoutDashboard } from '@tabler/icons-react'
 import { ChevronDown } from 'lucide-react'
@@ -33,6 +35,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { isMobile, setOpenMobile } = useSidebar()
   const { config, isLoading, getIconComponent } = useSidebarConfig()
   const { data: versionInfo } = useVersionInfo()
+  const { plugins } = usePlugins()
+
+  const pluginSidebarEntries = useMemo(() => {
+    return plugins
+      .flatMap((p) =>
+        (p.frontend.routes ?? [])
+          .filter((r) => r.sidebarEntry)
+          .map((r) => ({
+            pluginName: p.pluginName,
+            path: `/plugins/${p.pluginName}${r.path}`,
+            title: r.sidebarEntry!.title,
+            icon: toTablerIconName(r.sidebarEntry!.icon),
+            priority: r.sidebarEntry!.priority ?? 100,
+          }))
+      )
+      .sort((a, b) => a.priority - b.priority)
+  }, [plugins])
 
   const pinnedItems = useMemo(() => {
     if (!config) return []
@@ -241,6 +260,35 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarGroup>
           </Collapsible>
         ))}
+
+        {pluginSidebarEntries.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              {t('sidebar.plugins', 'Plugins')}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {pluginSidebarEntries.map((entry) => {
+                  const EntryIcon = getIconComponent(entry.icon)
+                  return (
+                    <SidebarMenuItem key={entry.path}>
+                      <SidebarMenuButton
+                        tooltip={entry.title}
+                        asChild
+                        isActive={isActive(entry.path)}
+                      >
+                        <Link to={entry.path} onClick={handleMenuItemClick}>
+                          <EntryIcon className="text-sidebar-primary" />
+                          <span>{entry.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter>

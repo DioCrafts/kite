@@ -9,6 +9,7 @@ import (
 	"github.com/zxh326/kite/pkg/cluster"
 	"github.com/zxh326/kite/pkg/common"
 	pkgmodel "github.com/zxh326/kite/pkg/model"
+	"github.com/zxh326/kite/pkg/plugin"
 	"github.com/zxh326/kite/pkg/rbac"
 )
 
@@ -177,7 +178,7 @@ func AuthorizeTool(c *gin.Context, cs *cluster.ClientSet, toolName string, args 
 }
 
 // ExecuteTool runs a tool and returns the result as a string.
-func ExecuteTool(ctx context.Context, c *gin.Context, cs *cluster.ClientSet, toolName string, args map[string]interface{}) (string, bool) {
+func ExecuteTool(ctx context.Context, c *gin.Context, cs *cluster.ClientSet, pm *plugin.PluginManager, toolName string, args map[string]interface{}) (string, bool) {
 	if result, isError := AuthorizeTool(c, cs, toolName, args); isError {
 		return result, true
 	}
@@ -204,6 +205,10 @@ func ExecuteTool(ctx context.Context, c *gin.Context, cs *cluster.ClientSet, too
 	case "query_prometheus":
 		return executeQueryPrometheus(ctx, cs, args)
 	default:
+		// Try plugin tools before returning unknown
+		if pm != nil && strings.HasPrefix(toolName, "plugin_") {
+			return pm.ExecutePluginTool(ctx, c, toolName, args)
+		}
 		return fmt.Sprintf("Unknown tool: %s", toolName), true
 	}
 }

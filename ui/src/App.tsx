@@ -16,6 +16,7 @@ import { SidebarInset, SidebarProvider } from './components/ui/sidebar'
 import { Toaster } from './components/ui/sonner'
 import { AIChatProvider } from './contexts/ai-chat-context'
 import { ClusterProvider } from './contexts/cluster-context'
+import { PluginProvider } from './contexts/plugin-context'
 import { TerminalProvider, useTerminal } from './contexts/terminal-context'
 import { useCluster } from './hooks/use-cluster'
 import { apiClient } from './lib/api-client'
@@ -105,9 +106,11 @@ function AppProviders({ children }: { children: ReactNode }) {
   return (
     <TerminalProvider>
       <ClusterProvider>
-        <GlobalSearchProvider>
-          <AIChatProvider>{children}</AIChatProvider>
-        </GlobalSearchProvider>
+        <PluginProvider>
+          <GlobalSearchProvider>
+            <AIChatProvider>{children}</AIChatProvider>
+          </GlobalSearchProvider>
+        </PluginProvider>
       </ClusterProvider>
     </TerminalProvider>
   )

@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom'
 
 import App, { StandaloneAIChatApp } from './App'
 import { InitCheckRoute } from './components/init-check-route'
+import { PluginPage } from './components/plugin-page'
 import { ProtectedRoute } from './components/protected-route'
 import { getSubPath } from './lib/subpath'
 import { CRListPage } from './pages/cr-list-page'
@@ -59,6 +60,10 @@ export const router = createBrowserRouter(
         {
           path: 'settings',
           element: <SettingsPage />,
+        },
+        {
+          path: 'plugins/:pluginName/*',
+          element: <PluginPage />,
         },
         {
           path: 'crds/:crd',

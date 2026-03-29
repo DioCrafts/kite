@@ -1,0 +1,238 @@
+syntax = "proto3";
+
+package kite.plugin.v1;
+
+option go_package = "github.com/zxh326/kite/pkg/plugin/proto";
+
+// PluginService is the main service that every Kite plugin process exposes.
+// Kite connects to this service via HashiCorp go-plugin (gRPC over stdio).
+service PluginService {
+  // GetManifest returns the plugin's metadata, permissions, and frontend config.
+  rpc GetManifest(Empty) returns (Manifest);
+
+  // Shutdown tells the plugin to release resources and stop gracefully.
+  rpc Shutdown(Empty) returns (Empty);
+
+  // OnClusterEvent notifies the plugin of a cluster-level event.
+  rpc OnClusterEvent(ClusterEvent) returns (Empty);
+
+  // HandleHTTP proxies an HTTP request from Kite to the plugin.
+  // Used for custom routes registered by the plugin.
+  rpc HandleHTTP(HTTPRequest) returns (HTTPResponse);
+
+  // GetAITools returns the list of AI tool definitions the plugin exposes.
+  rpc GetAITools(Empty) returns (AIToolList);
+
+  // ExecuteAITool runs a specific AI tool with the given arguments.
+  rpc ExecuteAITool(AIToolRequest) returns (AIToolResponse);
+
+  // AuthorizeAITool checks if a user has permission to invoke a tool.
+  rpc AuthorizeAITool(AIToolAuthRequest) returns (AIToolAuthResponse);
+
+  // GetResourceHandlers returns the list of custom resource types
+  // the plugin can handle (CRUD operations).
+  rpc GetResourceHandlers(Empty) returns (ResourceHandlerList);
+
+  // HandleResource processes a CRUD operation on a plugin-managed resource.
+  rpc HandleResource(ResourceRequest) returns (ResourceResponse);
+
+  // GetMiddleware returns the middleware configuration for this plugin.
+  rpc GetMiddleware(Empty) returns (MiddlewareConfig);
+
+  // ApplyMiddleware processes a request through the plugin's middleware chain.
+  rpc ApplyMiddleware(MiddlewareRequest) returns (MiddlewareResponse);
+}
+
+// -------------------------------------------------------------------------
+// Common messages
+// -------------------------------------------------------------------------
+
+message Empty {}
+
+message Manifest {
+  string name = 1;
+  string version = 2;
+  string description = 3;
+  string author = 4;
+  repeated Dependency requires = 5;
+  repeated Permission permissions = 6;
+  FrontendManifest frontend = 7; // null if backend-only
+  repeated SettingField settings = 8;
+  int32 priority = 9;
+  int32 rate_limit = 10;
+}
+
+message Dependency {
+  string name = 1;
+  string version = 2;
+}
+
+message Permission {
+  string resource = 1;
+  repeated string verbs = 2;
+}
+
+message FrontendManifest {
+  string remote_entry = 1;
+  map<string, string> exposed_modules = 2;
+  repeated FrontendRoute routes = 3;
+  string settings_panel = 4;
+}
+
+message FrontendRoute {
+  string path = 1;
+  string module = 2;
+  SidebarEntry sidebar_entry = 3; // null if no sidebar link
+}
+
+message SidebarEntry {
+  string title = 1;
+  string icon = 2;
+  string section = 3;
+  int32 priority = 4;
+}
+
+message SettingField {
+  string name = 1;
+  string label = 2;
+  string type = 3;
+  string default_value = 4;
+  string description = 5;
+  repeated SettingOption options = 6;
+  bool required = 7;
+}
+
+message SettingOption {
+  string label = 1;
+  string value = 2;
+}
+
+// -------------------------------------------------------------------------
+// HTTP proxy messages (for custom routes)
+// -------------------------------------------------------------------------
+
+message HTTPRequest {
+  string method = 1;
+  string path = 2;
+  map<string, string> headers = 3;
+  map<string, string> query_params = 4;
+  bytes body = 5;
+
+  // Context passed from Kite's middleware
+  string user_json = 6;      // JSON-serialized model.User
+  string cluster_name = 7;   // Current cluster name
+}
+
+message HTTPResponse {
+  int32 status_code = 1;
+  map<string, string> headers = 2;
+  bytes body = 3;
+}
+
+// -------------------------------------------------------------------------
+// AI tool messages
+// -------------------------------------------------------------------------
+
+message AIToolList {
+  repeated AIToolDef tools = 1;
+}
+
+message AIToolDef {
+  string name = 1;
+  string description = 2;
+  string properties_json = 3; // JSON-encoded map[string]any (JSON Schema)
+  repeated string required = 4;
+}
+
+message AIToolRequest {
+  string tool_name = 1;
+  string args_json = 2;       // JSON-encoded map[string]any
+  string cluster_name = 3;
+  string user_json = 4;       // JSON-serialized model.User for RBAC
+}
+
+message AIToolResponse {
+  string result = 1;
+  bool is_error = 2;
+}
+
+message AIToolAuthRequest {
+  string tool_name = 1;
+  string args_json = 2;
+  string cluster_name = 3;
+  string user_json = 4;
+}
+
+message AIToolAuthResponse {
+  bool allowed = 1;
+  string reason = 2; // Empty if allowed
+}
+
+// -------------------------------------------------------------------------
+// Resource handler messages
+// -------------------------------------------------------------------------
+
+message ResourceHandlerList {
+  repeated ResourceHandlerDef handlers = 1;
+}
+
+message ResourceHandlerDef {
+  string name = 1;
+  bool is_cluster_scoped = 2;
+}
+
+message ResourceRequest {
+  string handler_name = 1;    // Which resource handler to use
+  string operation = 2;       // "list", "get", "create", "update", "delete", "patch"
+  string namespace = 3;
+  string name = 4;
+  bytes body = 5;             // JSON/YAML body for create/update/patch
+
+  // Context
+  string cluster_name = 6;
+  string user_json = 7;
+  map<string, string> query_params = 8;
+}
+
+message ResourceResponse {
+  int32 status_code = 1;
+  bytes body = 2;             // JSON response body
+}
+
+// -------------------------------------------------------------------------
+// Middleware messages
+// -------------------------------------------------------------------------
+
+message MiddlewareConfig {
+  bool enabled = 1;
+  int32 priority = 2;   // Lower = earlier in chain
+}
+
+message MiddlewareRequest {
+  string method = 1;
+  string path = 2;
+  map<string, string> headers = 3;
+  string user_json = 4;
+  string cluster_name = 5;
+}
+
+message MiddlewareResponse {
+  enum Action {
+    CONTINUE = 0;   // Pass request through (optionally with modified headers)
+    ABORT = 1;       // Stop request processing, return the provided response
+  }
+
+  Action action = 1;
+  map<string, string> modified_headers = 2; // Only used with CONTINUE
+  int32 abort_status_code = 3;               // Only used with ABORT
+  bytes abort_body = 4;                      // Only used with ABORT
+}
+
+// -------------------------------------------------------------------------
+// Cluster events
+// -------------------------------------------------------------------------
+
+message ClusterEvent {
+  string type = 1;          // "added", "removed", "updated"
+  string cluster_name = 2;
+}

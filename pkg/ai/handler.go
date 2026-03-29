@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/zxh326/kite/pkg/cluster"
 	"github.com/zxh326/kite/pkg/model"
+	"github.com/zxh326/kite/pkg/plugin"
 )
 
 // HandleAIStatus returns whether AI features are enabled.
@@ -54,7 +55,7 @@ func HandleChat(c *gin.Context) {
 		return
 	}
 
-	agent, err := NewAgent(clientSet, cfg)
+	agent, err := NewAgent(clientSet, getPluginManager(c), cfg)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create AI agent: %v", err)})
 		return
@@ -113,7 +114,7 @@ func HandleExecuteContinue(c *gin.Context) {
 		return
 	}
 
-	agent, err := NewAgent(clientSet, cfg)
+	agent, err := NewAgent(clientSet, getPluginManager(c), cfg)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create AI agent: %v", err)})
 		return
@@ -164,7 +165,7 @@ func HandleInputContinue(c *gin.Context) {
 		return
 	}
 
-	agent, err := NewAgent(clientSet, cfg)
+	agent, err := NewAgent(clientSet, getPluginManager(c), cfg)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create AI agent: %v", err)})
 		return
@@ -332,4 +333,15 @@ func getClusterClientSet(c *gin.Context) (*cluster.ClientSet, bool) {
 	}
 	clientSet, ok := cs.(*cluster.ClientSet)
 	return clientSet, ok
+}
+
+func getPluginManager(c *gin.Context) *plugin.PluginManager {
+	pm, exists := c.Get("pluginManager")
+	if !exists {
+		return nil
+	}
+	if mgr, ok := pm.(*plugin.PluginManager); ok {
+		return mgr
+	}
+	return nil
 }

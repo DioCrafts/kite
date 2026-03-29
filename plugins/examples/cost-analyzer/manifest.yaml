@@ -1,0 +1,38 @@
+name: cost-analyzer
+version: "1.0.0"
+description: "Kubernetes cost estimation by namespace"
+author: "Kite Team"
+priority: 100
+rateLimit: 100
+
+permissions:
+  - resource: pods
+    verbs: [get, list]
+  - resource: nodes
+    verbs: [get, list]
+
+frontend:
+  remoteEntry: "/plugins/cost-analyzer/static/remoteEntry.js"
+  exposedModules:
+    ./CostDashboard: CostDashboard
+    ./CostSettings: CostSettings
+  routes:
+    - path: /cost
+      module: "./CostDashboard"
+      sidebarEntry:
+        title: "Cost Analysis"
+        icon: "currency-dollar"
+        section: "observability"
+  settingsPanel: "./CostSettings"
+
+settings:
+  - name: cpuPricePerHour
+    type: number
+    default: "0.05"
+    label: "CPU price per core/hour (USD)"
+    description: "The hourly cost per CPU core for cost estimation"
+  - name: memoryPricePerGBHour
+    type: number
+    default: "0.01"
+    label: "Memory price per GB/hour (USD)"
+    description: "The hourly cost per GB of memory for cost estimation"

@@ -12,6 +12,7 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/zxh326/kite/pkg/cluster"
 	"github.com/zxh326/kite/pkg/model"
+	"github.com/zxh326/kite/pkg/plugin"
 	"github.com/zxh326/kite/pkg/rbac"
 	"k8s.io/klog/v2"
 )
@@ -99,6 +100,7 @@ type Agent struct {
 	openaiClient    openai.Client
 	anthropicClient anthropic.Client
 	cs              *cluster.ClientSet
+	pm              *plugin.PluginManager
 	model           string
 	maxTokens       int
 }
@@ -113,7 +115,7 @@ const maxConversationMessages = 30
 const maxMessageChars = 8000
 
 // NewAgent creates a new AI agent for a conversation.
-func NewAgent(cs *cluster.ClientSet, cfg *RuntimeConfig) (*Agent, error) {
+func NewAgent(cs *cluster.ClientSet, pm *plugin.PluginManager, cfg *RuntimeConfig) (*Agent, error) {
 	provider := model.DefaultGeneralAIProvider
 	if cfg != nil {
 		provider = normalizeProvider(cfg.Provider)
@@ -132,6 +134,7 @@ func NewAgent(cs *cluster.ClientSet, cfg *RuntimeConfig) (*Agent, error) {
 	agent := &Agent{
 		provider:  provider,
 		cs:        cs,
+		pm:        pm,
 		model:     modelName,
 		maxTokens: maxTokens,
 	}

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 
 import { usePageTitle } from '@/hooks/use-page-title'
 import { ResponsiveTabs } from '@/components/ui/responsive-tabs'
+import { usePluginSettingsTabs } from '@/components/plugin-settings-panel'
 import { APIKeyManagement } from '@/components/settings/apikey-management'
 import { AuditLog } from '@/components/settings/audit-log'
 import { AuthenticationManagement } from '@/components/settings/authentication-management'
@@ -13,6 +14,7 @@ import { UserManagement } from '@/components/settings/user-management'
 
 export function SettingsPage() {
   const { t } = useTranslation()
+  const pluginTabs = usePluginSettingsTabs()
 
   usePageTitle('Settings')
 
@@ -69,6 +71,7 @@ export function SettingsPage() {
             label: t('settings.tabs.audit', 'Audit'),
             content: <AuditLog />,
           },
+          ...pluginTabs,
         ]}
       />
     </div>
