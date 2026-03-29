@@ -478,3 +478,66 @@ export const deleteAPIKey = async (
 ): Promise<{ message: string }> => {
   return await apiClient.delete<{ message: string }>(`/admin/apikeys/${id}`)
 }
+
+// ── Plugin Catalog ──────────────────────────────────────────────────────────
+
+export interface AdminPluginInfo {
+  name: string
+  version: string
+  description: string
+  author: string
+  state: 'loaded' | 'failed' | 'disabled' | 'stopped'
+  error?: string
+  priority: number
+  permissions: { resource: string; verbs: string[] }[]
+  settings: { key: string; type: string; label: string; required?: boolean }[]
+  frontend?: {
+    remoteEntry: string
+    routes?: { path: string; module: string }[]
+    injections?: { slot: string; module: string; priority?: number }[]
+  }
+}
+
+export const fetchAdminPlugins = async (): Promise<AdminPluginInfo[]> => {
+  return fetchAPI<AdminPluginInfo[]>('/admin/plugins/')
+}
+
+export const useAdminPlugins = (options?: { enabled?: boolean }) => {
+  return useQuery({
+    queryKey: ['admin-plugins'],
+    queryFn: fetchAdminPlugins,
+    enabled: options?.enabled ?? true,
+    staleTime: 10_000,
+  })
+}
+
+export const setPluginEnabled = async (
+  name: string,
+  enabled: boolean
+): Promise<void> => {
+  await apiClient.post(`/admin/plugins/${name}/enable`, { enabled })
+}
+
+export const reloadPlugin = async (name: string): Promise<void> => {
+  await apiClient.post(`/admin/plugins/${name}/reload`, {})
+}
+
+export const installPlugin = async (file: File): Promise<AdminPluginInfo> => {
+  const form = new FormData()
+  form.append('plugin', file)
+  const res = await fetch('/api/v1/admin/plugins/install', {
+    method: 'POST',
+    credentials: 'include',
+    body: form,
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error(body.error ?? res.statusText)
+  }
+  return res.json()
+}
+
+export const uninstallPlugin = async (name: string): Promise<void> => {
+  await apiClient.delete(`/admin/plugins/${name}`)
+}
+

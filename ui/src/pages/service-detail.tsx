@@ -28,9 +28,12 @@ import { RelatedResourcesTable } from '@/components/related-resource-table'
 import { ResourceDeleteConfirmationDialog } from '@/components/resource-delete-confirmation-dialog'
 import { ResourceHistoryTable } from '@/components/resource-history-table'
 import { YamlEditor } from '@/components/yaml-editor'
+import { PluginSlot } from '@/components/plugin-slot'
+import { useCluster } from '@/hooks/use-cluster'
 
 export function ServiceDetail(props: { name: string; namespace?: string }) {
   const { namespace, name } = props
+  const { currentCluster } = useCluster()
   const [yamlContent, setYamlContent] = useState('')
   const [isSavingYaml, setIsSavingYaml] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -224,6 +227,7 @@ export function ServiceDetail(props: { name: string; namespace?: string }) {
                     />
                   </CardContent>
                 </Card>
+                <PluginSlot slot="service-detail" resource={data} cluster={currentCluster ?? ''} namespace={namespace} />
               </div>
             ),
           },

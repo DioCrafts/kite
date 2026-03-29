@@ -358,4 +358,44 @@ func registerPluginAdminRoutes(adminAPI *gin.RouterGroup, pm *plugin.PluginManag
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	// Install a new plugin from an uploaded .tar.gz archive.
+	// The multipart field name must be "plugin".
+	pluginAdmin.POST("/install", func(c *gin.Context) {
+		file, header, err := c.Request.FormFile("plugin")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing 'plugin' file field: " + err.Error()})
+			return
+		}
+		defer file.Close()
+
+		_ = header // filename not used; manifest provides authoritative name
+
+		lp, err := pm.InstallPlugin(file)
+		if err != nil {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusCreated, gin.H{
+			"name":    lp.Manifest.Name,
+			"version": lp.Manifest.Version,
+			"state":   lp.State,
+		})
+	})
+
+	// Uninstall (remove) a plugin by name.
+	pluginAdmin.DELETE("/:name", func(c *gin.Context) {
+		name := c.Param("name")
+		if err := pm.UninstallPlugin(name); err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
 }
+

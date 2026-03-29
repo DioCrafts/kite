@@ -105,6 +105,26 @@ type FrontendManifest struct {
 	// SettingsPanel is the Module Federation module name (e.g. "./Settings")
 	// for the plugin's settings panel rendered within Kite's Settings page.
 	SettingsPanel string `json:"settingsPanel,omitempty" yaml:"settingsPanel,omitempty"`
+
+	// Injections lists modules that are auto-loaded into slots on existing Kite pages.
+	// Each module self-registers by calling registerSlotComponent / registerTableColumns
+	// from the plugin SDK upon import.
+	Injections []PluginInjection `json:"injections,omitempty" yaml:"injections,omitempty"`
+}
+
+// PluginInjection declares that a plugin module should be auto-loaded into
+// a named slot on an existing Kite page (detail view or table).
+type PluginInjection struct {
+	// Slot is the target slot name (e.g. "pod-detail", "deployments-table").
+	Slot string `json:"slot" yaml:"slot"`
+
+	// Module is the Module Federation module name to load (e.g. "./PodCostSection").
+	// The module's default export must call registerSlotComponent or registerTableColumns
+	// from @kite-dashboard/plugin-sdk as a side-effect on import.
+	Module string `json:"module" yaml:"module"`
+
+	// Priority controls the rendering order within the slot. Lower values render first.
+	Priority int `json:"priority,omitempty" yaml:"priority,omitempty"`
 }
 
 // FrontendRoute defines a route the plugin adds to Kite's React Router.

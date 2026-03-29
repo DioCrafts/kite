@@ -47,6 +47,7 @@ import { ContainerSelector } from '@/components/selector/container-selector'
 import { Terminal } from '@/components/terminal'
 import { VolumeTable } from '@/components/volume-table'
 import { YamlEditor } from '@/components/yaml-editor'
+import { PluginSlot } from '@/components/plugin-slot'
 
 export function PodDetail(props: { namespace: string; name: string }) {
   const { namespace, name } = props
@@ -479,6 +480,7 @@ export function PodDetail(props: { namespace: string; name: string }) {
                     </CardContent>
                   </Card>
                 )}
+                <PluginSlot slot="pod-detail" resource={pod} cluster={currentCluster ?? ''} namespace={namespace} />
               </div>
             ),
           },

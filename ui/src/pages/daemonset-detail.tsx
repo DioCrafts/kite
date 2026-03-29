@@ -39,9 +39,12 @@ import { ResourceHistoryTable } from '@/components/resource-history-table'
 import { Terminal } from '@/components/terminal'
 import { VolumeTable } from '@/components/volume-table'
 import { YamlEditor } from '@/components/yaml-editor'
+import { PluginSlot } from '@/components/plugin-slot'
+import { useCluster } from '@/hooks/use-cluster'
 
 export function DaemonSetDetail(props: { namespace: string; name: string }) {
   const { namespace, name } = props
+  const { currentCluster } = useCluster()
   const [yamlContent, setYamlContent] = useState('')
   const [isSavingYaml, setIsSavingYaml] = useState(false)
   const [isRestartPopoverOpen, setIsRestartPopoverOpen] = useState(false)
@@ -446,6 +449,7 @@ export function DaemonSetDetail(props: { namespace: string; name: string }) {
                     </CardContent>
                   </Card>
                 )}
+                <PluginSlot slot="daemonset-detail" resource={daemonset} cluster={currentCluster ?? ''} namespace={namespace} />
               </div>
             ),
           },

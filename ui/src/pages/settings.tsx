@@ -11,6 +11,7 @@ import { GeneralManagement } from '@/components/settings/general-management'
 import { RBACManagement } from '@/components/settings/rbac-management'
 import { TemplateManagement } from '@/components/settings/template-management'
 import { UserManagement } from '@/components/settings/user-management'
+import { PluginCatalog } from '@/components/settings/plugin-catalog'
 
 export function SettingsPage() {
   const { t } = useTranslation()
@@ -70,6 +71,11 @@ export function SettingsPage() {
             value: 'audit',
             label: t('settings.tabs.audit', 'Audit'),
             content: <AuditLog />,
+          },
+          {
+            value: 'plugins',
+            label: t('settings.tabs.plugins', 'Plugins'),
+            content: <PluginCatalog />,
           },
           ...pluginTabs,
         ]}

@@ -57,9 +57,12 @@ import { NodeMonitoring } from '@/components/node-monitoring'
 import { PodTable } from '@/components/pod-table'
 import { Terminal } from '@/components/terminal'
 import { YamlEditor } from '@/components/yaml-editor'
+import { PluginSlot } from '@/components/plugin-slot'
+import { useCluster } from '@/hooks/use-cluster'
 
 export function NodeDetail(props: { name: string }) {
   const { name } = props
+  const { currentCluster } = useCluster()
   const [yamlContent, setYamlContent] = useState('')
   const [isSavingYaml, setIsSavingYaml] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -855,6 +858,7 @@ export function NodeDetail(props: { name: string }) {
                       </CardContent>
                     </Card>
                   )}
+                <PluginSlot slot="node-detail" resource={data} cluster={currentCluster ?? ''} />
               </div>
             ),
           },

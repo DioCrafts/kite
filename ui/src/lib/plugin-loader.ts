@@ -15,11 +15,18 @@ export interface PluginFrontendRoute {
   sidebarEntry?: PluginSidebarEntry
 }
 
+export interface PluginInjection {
+  slot: string
+  module: string
+  priority?: number
+}
+
 export interface PluginFrontendManifest {
   remoteEntry: string
   exposedModules?: Record<string, string>
   routes?: PluginFrontendRoute[]
   settingsPanel?: string
+  injections?: PluginInjection[]
 }
 
 export interface PluginManifestWithName {

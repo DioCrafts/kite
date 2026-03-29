@@ -46,9 +46,12 @@ import { ResourceHistoryTable } from '@/components/resource-history-table'
 import { Terminal } from '@/components/terminal'
 import { VolumeTable } from '@/components/volume-table'
 import { YamlEditor } from '@/components/yaml-editor'
+import { PluginSlot } from '@/components/plugin-slot'
+import { useCluster } from '@/hooks/use-cluster'
 
 export function DeploymentDetail(props: { namespace: string; name: string }) {
   const { namespace, name } = props
+  const { currentCluster } = useCluster()
   const [scaleReplicas, setScaleReplicas] = useState<number>(1)
   const [yamlContent, setYamlContent] = useState('')
   const [isSavingYaml, setIsSavingYaml] = useState(false)
@@ -603,6 +606,7 @@ export function DeploymentDetail(props: { namespace: string; name: string }) {
                     </CardContent>
                   </Card>
                 )}
+                <PluginSlot slot="deployment-detail" resource={deployment} cluster={currentCluster ?? ''} namespace={namespace} />
               </div>
             ),
           },
